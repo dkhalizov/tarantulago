@@ -3,6 +3,13 @@ name: Docker Build and Publish
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (optional)'
+        required: false
+        type: string
+        default: 'manual'
 
 env:
   REGISTRY: ghcr.io
