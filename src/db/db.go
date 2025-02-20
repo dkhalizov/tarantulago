@@ -133,67 +133,88 @@ func (db *TarantulaDB) GetTarantulasDueFeeding(ctx context.Context, userID int64
 	var items []models.TarantulaListItem
 
 	result := db.db.WithContext(ctx).Raw(`
-		WITH LastFeeding AS (
-    SELECT
+        WITH LastFeeding AS (
+    SELECT 
         tarantula_id,
         MAX(feeding_date) as last_feeding_date,
         EXTRACT(EPOCH FROM (CURRENT_DATE - MAX(feeding_date)))/86400 as days_since_feeding
     FROM spider_bot.feeding_events
     GROUP BY tarantula_id
 ),
-CurrentSize AS (
-    SELECT DISTINCT -- Added DISTINCT here
+SizeBoundaries AS (
+    SELECT 
+        size_category,
+        MIN(body_length_cm) as min_size,
+        MAX(body_length_cm) as max_size,
+        -- Create an ordering for size categories
+        CASE size_category
+            WHEN 'Spiderling' THEN 1
+            WHEN 'Juvenile' THEN 2
+            WHEN 'Sub-Adult' THEN 3
+            WHEN 'Adult' THEN 4
+        END as category_order
+    FROM spider_bot.feeding_schedules
+    GROUP BY size_category
+),
+TarantulaSize AS (
+    SELECT 
         t.id as tarantula_id,
-        COALESCE(
-            mr.post_molt_length_cm,
-            CASE
+        COALESCE(t.current_size,
+            CASE 
                 WHEN ts.adult_size_cm <= 8 THEN ts.adult_size_cm * 0.3
                 ELSE ts.adult_size_cm * 0.4
             END
         ) as current_size_cm
     FROM spider_bot.tarantulas t
     JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
-    LEFT JOIN (
-        SELECT tarantula_id, post_molt_length_cm
-        FROM spider_bot.molt_records
-        WHERE molt_date = (
-            SELECT MAX(molt_date)
-            FROM spider_bot.molt_records mr2
-            WHERE mr2.tarantula_id = molt_records.tarantula_id
-            AND mr2.post_molt_length_cm IS NOT NULL
-        )
-    ) mr ON t.id = mr.tarantula_id
 ),
-FeedingSchedule AS (
-    -- Added this CTE to ensure one schedule per species
-    SELECT DISTINCT ON (species_id)
-        species_id,
+MatchingSchedule AS (
+    SELECT DISTINCT ON (t.id)
+        t.id as tarantula_id,
+        fs.frequency_id,
+        ff.min_days,
         ff.max_days
-    FROM spider_bot.feeding_schedules fs
+    FROM spider_bot.tarantulas t
+    JOIN TarantulaSize ts ON t.id = ts.tarantula_id
+    JOIN spider_bot.feeding_schedules fs ON t.species_id = fs.species_id
     JOIN spider_bot.feeding_frequencies ff ON fs.frequency_id = ff.id
-    ORDER BY species_id, fs.id DESC -- Takes the most recent schedule if multiple exist
+    JOIN SizeBoundaries sb ON fs.size_category = sb.size_category
+    WHERE ts.current_size_cm <= sb.max_size
+      AND ts.current_size_cm > COALESCE(
+        (SELECT MAX(max_size) 
+         FROM SizeBoundaries sb2 
+         WHERE sb2.category_order < sb.category_order),
+        0
+      )
+    ORDER BY t.id, sb.category_order DESC
 )
 SELECT DISTINCT
     t.id,
     t.name,
-	ts.id as species_id,
+    ts.id as species_id,
     ts.common_name as species_name,
     COALESCE(lf.days_since_feeding, 999) as days_since_feeding,
+    ms.frequency_id,
+    ms.min_days,
+    ms.max_days,
     CASE
-        WHEN ms.stage_name = 'Pre-molt' THEN 'In pre-molt'
+        WHEN molt.stage_name = 'Pre-molt' THEN 'In pre-molt'
         WHEN lf.days_since_feeding IS NULL THEN 'Never fed'
-        WHEN lf.days_since_feeding > fs.max_days THEN 'Overdue feeding'
-        ELSE 'Due for feeding'
+        WHEN lf.days_since_feeding > ms.max_days THEN 'Overdue feeding'
+        WHEN lf.days_since_feeding > ms.min_days THEN 'Due for feeding'
+        ELSE 'Recently fed'
     END as current_status
 FROM spider_bot.tarantulas t
 JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
-JOIN CurrentSize cs ON t.id = cs.tarantula_id
-LEFT JOIN spider_bot.molt_stages ms ON t.current_molt_stage_id = ms.id
+LEFT JOIN spider_bot.molt_stages molt ON t.current_molt_stage_id = molt.id
 LEFT JOIN LastFeeding lf ON t.id = lf.tarantula_id
-LEFT JOIN FeedingSchedule fs ON ts.id = fs.species_id
+LEFT JOIN MatchingSchedule ms ON t.id = ms.tarantula_id
 WHERE t.user_id = ?
-    AND ms.stage_name != 'Pre-molt'
-    AND (lf.days_since_feeding IS NULL OR lf.days_since_feeding > fs.max_days)
+    AND molt.stage_name != 'Pre-molt'
+    AND (
+        lf.days_since_feeding IS NULL 
+        OR lf.days_since_feeding > ms.min_days
+    )
 ORDER BY days_since_feeding DESC`, userID).
 		Scan(&items)
 
@@ -229,20 +250,12 @@ func (db *TarantulaDB) GetRecentFeedingRecords(ctx context.Context, userID int64
 	var records []models.FeedingEvent
 
 	result := db.db.WithContext(ctx).
-		Table("spider_bot.feeding_events").
-		Select(`
-			tarantulas.name as tarantula_name,
-			feeding_events.feeding_date,
-			cricket_colonies.colony_name,
-			feeding_events.number_of_crickets,
-			feeding_statuses.status_name as status,
-			feeding_events.notes
-		`).
-		Joins("JOIN spider_bot.tarantulas ON feeding_events.tarantula_id = tarantulas.id").
-		Joins("JOIN spider_bot.cricket_colonies ON feeding_events.cricket_colony_id = cricket_colonies.id").
-		Joins("JOIN spider_bot.feeding_statuses ON feeding_events.feeding_status_id = feeding_statuses.id").
-		Where("tarantulas.user_id = ?", userID).
-		Order("feeding_events.feeding_date DESC").
+		Preload("Tarantula").
+		Preload("CricketColony").
+		Preload("FeedingStatus").
+		Preload("User").
+		Where("user_id = ?", userID).
+		Order("feeding_date DESC").
 		Limit(int(limit)).
 		Find(&records)
 

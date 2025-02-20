@@ -77,6 +77,7 @@ func (t *TarantulaBot) setupHandlers() {
 		err := t.db.EnsureUserExists(context.Background(), &models.TelegramUser{
 			TelegramID: c.Sender().ID,
 			FirstName:  c.Sender().FirstName,
+			ChatID:     c.Chat().ID,
 			LastName:   c.Sender().LastName,
 			Username:   c.Sender().Username,
 		})
@@ -164,8 +165,8 @@ func (t *TarantulaBot) setupHandlers() {
 		} else {
 			msg = "Recent feeding records:\n"
 			for _, record := range recentFeedings {
-				msg += fmt.Sprintf("🕷 %s fed on %s. Days since %s\n", record.Tarantula.Name, record.FeedingDate.Format("2006-01-02"),
-					record.FeedingDate.Sub(time.Now()).Round(time.Hour*24))
+				msg += fmt.Sprintf("🕷 %s fed on %s. Days since %0.2f\n", record.Tarantula.Name, record.FeedingDate.Format("2006-01-02"),
+					time.Now().Sub(record.FeedingDate).Round(time.Hour*24).Hours()/24)
 			}
 		}
 

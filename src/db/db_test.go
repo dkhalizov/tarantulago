@@ -73,7 +73,6 @@ func TestDatabaseOperations(t *testing.T) {
 	colony := models.CricketColony{
 		ColonyName:   "Test Colony",
 		CurrentCount: 100,
-		SizeTypeID:   1,
 		UserID:       userID,
 	}
 	err = database.AddColony(ctx, colony)
@@ -95,8 +94,9 @@ func TestDatabaseOperations(t *testing.T) {
 			CricketColonyID:  int(colonies[0].ID),
 			NumberOfCrickets: 2,
 			Notes:            "Test feeding",
+			UserID:           userID,
 		}
-		feedingID, err := database.RecordFeeding(ctx, userID, feedingEvent)
+		feedingID, err := database.RecordFeeding(ctx, feedingEvent)
 		if err != nil {
 			t.Fatalf("Failed to record feeding: %v", err)
 		}

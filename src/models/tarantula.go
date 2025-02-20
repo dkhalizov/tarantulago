@@ -233,12 +233,15 @@ type AddColonyParams struct {
 }
 
 type TarantulaListItem struct {
-	ID               int32
-	Name             string
-	SpeciesID        int32
-	SpeciesName      string
-	DaysSinceFeeding float64
-	CurrentStatus    string
+	ID               int32   `json:"id"`
+	Name             string  `json:"name"`
+	SpeciesID        int32   `json:"species_id"`
+	SpeciesName      string  `json:"species_name"`
+	DaysSinceFeeding float64 `json:"days_since_feeding"`
+	CurrentStatus    string  `json:"current_status"`
+	FrequencyID      int32   `json:"frequency_id"`
+	MinDays          int32   `json:"min_days"`
+	MaxDays          int32   `json:"max_days"`
 }
 
 type UserSettings struct {

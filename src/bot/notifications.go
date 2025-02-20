@@ -101,21 +101,38 @@ func (n *NotificationSystem) checkFeedings(userID int64, chatID int64, settings 
 		return
 	}
 
+	overdueFeedings := make([]models.TarantulaListItem, 0)
 	dueFeedings := make([]models.TarantulaListItem, 0)
+
 	for _, t := range feedings {
-		if t.DaysSinceFeeding >= float64(settings.FeedingReminderDays) {
+		if t.DaysSinceFeeding > float64(t.MaxDays) {
+			overdueFeedings = append(overdueFeedings, t)
+		} else if t.DaysSinceFeeding >= float64(t.MinDays) {
 			dueFeedings = append(dueFeedings, t)
 		}
 	}
 
-	if len(dueFeedings) > 0 {
-		message := "🍽 *Feeding Due*\n\n"
-		for _, t := range dueFeedings {
-			message += fmt.Sprintf("• %s - %.0f days since last feeding\n",
-				t.Name, t.DaysSinceFeeding)
+	if len(overdueFeedings) > 0 || len(dueFeedings) > 0 {
+		message := "🕷 *Feeding Schedule Update*\n\n"
+
+		if len(overdueFeedings) > 0 {
+			message += "⚠️ *Overdue Feedings:*\n"
+			for _, t := range overdueFeedings {
+				message += fmt.Sprintf("• %s (%s) - %.0f days since last feeding (recommended: %d-%d days)\n",
+					t.Name, t.SpeciesName, t.DaysSinceFeeding, t.MinDays, t.MaxDays)
+			}
+			message += "\n"
 		}
 
-		if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message); err != nil {
+		if len(dueFeedings) > 0 {
+			message += "📅 *Due for Feeding:*\n"
+			for _, t := range dueFeedings {
+				message += fmt.Sprintf("• %s (%s) - %.0f days since last feeding (recommended: %d-%d days)\n",
+					t.Name, t.SpeciesName, t.DaysSinceFeeding, t.MinDays, t.MaxDays)
+			}
+		}
+
+		if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message, tele.ModeMarkdown); err != nil {
 			slog.Error("Error sending feeding notification", "user_id", userID, "error", err)
 		}
 	}
