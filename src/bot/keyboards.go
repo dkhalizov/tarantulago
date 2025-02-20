@@ -153,6 +153,25 @@ func (t *TarantulaBot) setupHandlers() {
 		return c.Send("What's the colony ID?")
 	})
 
+	b.Handle(&btnFeeding, func(c tele.Context) error {
+		recentFeedings, err := t.db.GetRecentFeedingRecords(t.ctx, c.Sender().ID, 10)
+		if err != nil {
+			return fmt.Errorf("failed to get tarantulas: %w", err)
+		}
+		var msg string
+		if len(recentFeedings) == 0 {
+			msg = "No feeding records found."
+		} else {
+			msg = "Recent feeding records:\n"
+			for _, record := range recentFeedings {
+				msg += fmt.Sprintf("🕷 %s fed on %s. Days since %s\n", record.Tarantula.Name, record.FeedingDate.Format("2006-01-02"),
+					record.FeedingDate.Sub(time.Now()).Round(time.Hour*24))
+			}
+		}
+
+		return c.Send(msg)
+	})
+
 	b.Handle(&btnAddColony, func(c tele.Context) error {
 		session := t.sessions.GetSession(c.Sender().ID)
 		session.CurrentState = StateAddingColony
