@@ -39,6 +39,8 @@ type NotificationOperations interface {
 	GetTarantulasDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaListItem, error)
 	GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error)
 	GetActiveUsers(ctx context.Context) ([]models.TelegramUser, error)
+
+	GetColonyMaintenanceAlerts(ctx context.Context, userID int64) ([]models.ColonyMaintenanceAlert, error)
 }
 
 func (n *NotificationSystem) shouldSendNotification(settings *models.UserSettings) bool {
@@ -90,6 +92,7 @@ func (n *NotificationSystem) processScheduledNotifications() {
 		if n.shouldSendNotification(settings) {
 			n.checkFeedings(user.TelegramID, user.ChatID, settings)
 			n.checkColonies(user.TelegramID, user.ChatID, settings)
+			n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
 		}
 	}
 }
@@ -162,5 +165,40 @@ func (n *NotificationSystem) checkColonies(userID int64, chatID int64, settings 
 		if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message); err != nil {
 			slog.Error("Error sending colony notification", "user_id", userID, "error", err)
 		}
+	}
+}
+
+func (n *NotificationSystem) checkColonyMaintenance(userID int64, chatID int64, settings *models.UserSettings) {
+	if !settings.MaintenanceReminderEnabled {
+		return
+	}
+
+	alerts, err := n.db.GetColonyMaintenanceAlerts(n.ctx, userID)
+	if err != nil {
+		slog.Error("Error checking colony maintenance alerts", "user_id", userID, "error", err)
+		return
+	}
+
+	if len(alerts) == 0 {
+		return
+	}
+
+	coloniesWithAlerts := make(map[string][]models.ColonyMaintenanceAlert)
+	for _, alert := range alerts {
+		coloniesWithAlerts[alert.ColonyName] = append(coloniesWithAlerts[alert.ColonyName], alert)
+	}
+
+	message := "🧹 *Cricket Colony Maintenance Reminder*\n\n"
+
+	for colonyName, alerts := range coloniesWithAlerts {
+		message += fmt.Sprintf("*%s*:\n", colonyName)
+		for _, alert := range alerts {
+			message += fmt.Sprintf("• %s - %d days overdue\n", alert.MaintenanceType, alert.DaysOverdue)
+		}
+		message += "\n"
+	}
+
+	if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message, tele.ModeMarkdown); err != nil {
+		slog.Error("Error sending maintenance notification", "user_id", userID, "error", err)
 	}
 }

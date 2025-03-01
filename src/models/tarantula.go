@@ -245,14 +245,18 @@ type TarantulaListItem struct {
 }
 
 type UserSettings struct {
-	ID                  int       `json:"id" gorm:"primaryKey"`
-	UserID              int64     `json:"user_id" gorm:"uniqueIndex;not null"`
-	NotificationEnabled bool      `json:"notification_enabled" gorm:"default:true"`
-	NotificationTimeUTC string    `json:"notification_time_utc" gorm:"type:varchar(5);default:'12:00'"`
-	FeedingReminderDays int       `json:"feeding_reminder_days" gorm:"default:7"`
-	LowColonyThreshold  int       `json:"low_colony_threshold" gorm:"default:50"`
-	CreatedAt           time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt           time.Time `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	ID                         int       `json:"id" gorm:"primaryKey"`
+	UserID                     int64     `json:"user_id" gorm:"uniqueIndex;not null"`
+	NotificationEnabled        bool      `json:"notification_enabled" gorm:"default:true"`
+	NotificationTimeUTC        string    `json:"notification_time_utc" gorm:"type:varchar(5);default:'12:00'"`
+	FeedingReminderDays        int       `json:"feeding_reminder_days" gorm:"default:7"`
+	LowColonyThreshold         int       `json:"low_colony_threshold" gorm:"default:50"`
+	CreatedAt                  time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt                  time.Time `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+	MaintenanceReminderEnabled bool      `json:"maintenance_reminder_enabled" gorm:"default:true"`
+	FoodWaterFrequencyDays     int       `json:"food_water_frequency_days" gorm:"default:3"`
+	CleaningFrequencyDays      int       `json:"cleaning_frequency_days" gorm:"default:14"`
+	AdultRemovalFrequencyDays  int       `json:"adult_removal_frequency_days" gorm:"default:7"`
 
 	User TelegramUser `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
 }
@@ -278,4 +282,53 @@ func (u *TelegramUser) BeforeUpdate(tx *gorm.DB) error {
 func (s *UserSettings) BeforeUpdate(tx *gorm.DB) error {
 	s.UpdatedAt = time.Now()
 	return nil
+}
+
+type ColonyMaintenanceType struct {
+	ID            int    `json:"id" gorm:"primaryKey"`
+	TypeName      string `json:"type_name" gorm:"unique;not null"`
+	Description   string `json:"description"`
+	FrequencyDays int    `json:"frequency_days" gorm:"default:7"`
+}
+
+type ColonyMaintenanceRecord struct {
+	ID                int       `json:"id" gorm:"primaryKey"`
+	ColonyID          int       `json:"colony_id" gorm:"index"`
+	MaintenanceTypeID int       `json:"maintenance_type_id" gorm:"index"`
+	MaintenanceDate   time.Time `json:"maintenance_date" gorm:"index;not null"`
+	Notes             string    `json:"notes"`
+	UserID            int64     `json:"user_id" gorm:"index"`
+	CreatedAt         time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+
+	Colony          CricketColony         `json:"colony" gorm:"foreignKey:ColonyID"`
+	MaintenanceType ColonyMaintenanceType `json:"maintenance_type" gorm:"foreignKey:MaintenanceTypeID"`
+	User            TelegramUser          `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
+}
+
+type ColonyMaintenanceSchedule struct {
+	ID                int        `json:"id" gorm:"primaryKey"`
+	ColonyID          int        `json:"colony_id" gorm:"index"`
+	MaintenanceTypeID int        `json:"maintenance_type_id" gorm:"index"`
+	FrequencyDays     int        `json:"frequency_days" gorm:"not null"`
+	Enabled           bool       `json:"enabled" gorm:"default:true"`
+	LastPerformedDate *time.Time `json:"last_performed_date"`
+	UserID            int64      `json:"user_id" gorm:"index"`
+	CreatedAt         time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt         time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+
+	Colony          CricketColony         `json:"colony" gorm:"foreignKey:ColonyID"`
+	MaintenanceType ColonyMaintenanceType `json:"maintenance_type" gorm:"foreignKey:MaintenanceTypeID"`
+	User            TelegramUser          `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
+}
+
+type ColonyMaintenanceAlert struct {
+	ID                int32  `json:"id" gorm:"column:id;primaryKey"`
+	ColonyName        string `json:"colony_name" gorm:"column:colony_name"`
+	MaintenanceType   string `json:"maintenance_type" gorm:"column:maintenance_type"`
+	DaysSinceLastDone int32  `json:"days_since_last_done" gorm:"column:days_since_last_done"`
+	DaysOverdue       int32  `json:"days_overdue" gorm:"column:days_overdue"`
+}
+
+func (ColonyMaintenanceAlert) TableName() string {
+	return "spider_bot.colony_maintenance_alerts"
 }

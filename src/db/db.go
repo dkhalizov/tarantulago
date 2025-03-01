@@ -134,63 +134,63 @@ func (db *TarantulaDB) GetTarantulasDueFeeding(ctx context.Context, userID int64
 
 	result := db.db.WithContext(ctx).Raw(`
         WITH LastFeeding AS (
-    SELECT 
+    SELECT
         tarantula_id,
         MAX(feeding_date) as last_feeding_date,
-        EXTRACT(EPOCH FROM (CURRENT_DATE - MAX(feeding_date)))/86400 as days_since_feeding
+        EXTRACT(DAY FROM (CURRENT_DATE - MAX(feeding_date))) as days_since_feeding
     FROM spider_bot.feeding_events
     GROUP BY tarantula_id
 ),
-SizeBoundaries AS (
-    SELECT 
-        size_category,
-        MIN(body_length_cm) as min_size,
-        MAX(body_length_cm) as max_size,
-        -- Create an ordering for size categories
-        CASE size_category
-            WHEN 'Spiderling' THEN 1
-            WHEN 'Juvenile' THEN 2
-            WHEN 'Sub-Adult' THEN 3
-            WHEN 'Adult' THEN 4
-        END as category_order
-    FROM spider_bot.feeding_schedules
-    GROUP BY size_category
-),
-TarantulaSize AS (
-    SELECT 
-        t.id as tarantula_id,
-        COALESCE(t.current_size,
-            CASE 
-                WHEN ts.adult_size_cm <= 8 THEN ts.adult_size_cm * 0.3
-                ELSE ts.adult_size_cm * 0.4
-            END
-        ) as current_size_cm
-    FROM spider_bot.tarantulas t
-    JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
-),
-MatchingSchedule AS (
-    SELECT DISTINCT ON (t.id)
-        t.id as tarantula_id,
-        fs.frequency_id,
-        ff.min_days,
-        ff.max_days
-    FROM spider_bot.tarantulas t
-    JOIN TarantulaSize ts ON t.id = ts.tarantula_id
-    JOIN spider_bot.feeding_schedules fs ON t.species_id = fs.species_id
-    JOIN spider_bot.feeding_frequencies ff ON fs.frequency_id = ff.id
-    JOIN SizeBoundaries sb ON fs.size_category = sb.size_category
-    WHERE ts.current_size_cm <= sb.max_size
-      AND ts.current_size_cm > COALESCE(
-        (SELECT MAX(max_size) 
-         FROM SizeBoundaries sb2 
-         WHERE sb2.category_order < sb.category_order),
-        0
-      )
-    ORDER BY t.id, sb.category_order DESC
-)
-SELECT DISTINCT
-    t.id,
-    t.name,
+     SizeBoundaries AS (
+         SELECT
+             size_category,
+             MIN(body_length_cm) as min_size,
+             MAX(body_length_cm) as max_size,
+             CASE size_category
+                 WHEN 'Spiderling' THEN 1
+                 WHEN 'Juvenile' THEN 2
+                 WHEN 'Sub-Adult' THEN 3
+                 WHEN 'Adult' THEN 4
+                 END as category_order
+         FROM spider_bot.feeding_schedules
+         GROUP BY size_category
+     ),
+     TarantulaSize AS (
+         SELECT
+             t.id as tarantula_id,
+             COALESCE(
+                     t.current_size,
+                     CASE
+                         WHEN ts.adult_size_cm <= 8 THEN ts.adult_size_cm * 0.3
+                         ELSE ts.adult_size_cm * 0.4
+                         END
+             ) as current_size_cm
+         FROM spider_bot.tarantulas t
+                  JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
+     ),
+     MatchingSchedule AS (
+         SELECT DISTINCT ON (t.id)
+             t.id as tarantula_id,
+             fs.frequency_id,
+             ff.min_days,
+             ff.max_days
+         FROM spider_bot.tarantulas t
+                  JOIN TarantulaSize ts ON t.id = ts.tarantula_id
+                  JOIN spider_bot.feeding_schedules fs ON t.species_id = fs.species_id
+                  JOIN spider_bot.feeding_frequencies ff ON fs.frequency_id = ff.id
+                  JOIN SizeBoundaries sb ON fs.size_category = sb.size_category
+         WHERE ts.current_size_cm <= sb.max_size
+           AND ts.current_size_cm > COALESCE(
+                 (SELECT MAX(max_size)
+                  FROM SizeBoundaries sb2
+                  WHERE sb2.category_order < sb.category_order),
+                 0
+                                    )
+         ORDER BY t.id, sb.category_order DESC
+     )
+SELECT
+    t.id as tarantula_id,
+    t.name as tarantula_name,
     ts.id as species_id,
     ts.common_name as species_name,
     COALESCE(lf.days_since_feeding, 999) as days_since_feeding,
@@ -203,19 +203,19 @@ SELECT DISTINCT
         WHEN lf.days_since_feeding > ms.max_days THEN 'Overdue feeding'
         WHEN lf.days_since_feeding > ms.min_days THEN 'Due for feeding'
         ELSE 'Recently fed'
-    END as current_status
+        END as current_status
 FROM spider_bot.tarantulas t
-JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
-LEFT JOIN spider_bot.molt_stages molt ON t.current_molt_stage_id = molt.id
-LEFT JOIN LastFeeding lf ON t.id = lf.tarantula_id
-LEFT JOIN MatchingSchedule ms ON t.id = ms.tarantula_id
+         JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
+         LEFT JOIN spider_bot.molt_stages molt ON t.current_molt_stage_id = molt.id
+         LEFT JOIN LastFeeding lf ON t.id = lf.tarantula_id
+         LEFT JOIN MatchingSchedule ms ON t.id = ms.tarantula_id
 WHERE t.user_id = ?
-    AND molt.stage_name != 'Pre-molt'
-    AND (
-        lf.days_since_feeding IS NULL 
+  AND (molt.stage_name IS NULL OR molt.stage_name != 'Pre-molt')
+  AND (
+    lf.days_since_feeding IS NULL
         OR lf.days_since_feeding > ms.min_days
     )
-ORDER BY days_since_feeding DESC`, userID).
+ORDER BY days_since_feeding DESC;`, userID).
 		Scan(&items)
 
 	if result.Error != nil {
@@ -763,4 +763,118 @@ func (db *TarantulaDB) EnsureUserExists(ctx context.Context, user *models.Telegr
 	}
 
 	return nil
+}
+
+func (db *TarantulaDB) RecordColonyMaintenance(ctx context.Context, record models.ColonyMaintenanceRecord) (int64, error) {
+	result := db.db.WithContext(ctx).Create(&record)
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to create colony maintenance record: %w", result.Error)
+	}
+
+	err := db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var schedule models.ColonyMaintenanceSchedule
+		err := tx.Where("colony_id = ? AND maintenance_type_id = ? AND user_id = ?",
+			record.ColonyID, record.MaintenanceTypeID, record.UserID).First(&schedule).Error
+
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				var maintenanceType models.ColonyMaintenanceType
+				if err := tx.First(&maintenanceType, record.MaintenanceTypeID).Error; err != nil {
+					return fmt.Errorf("failed to get maintenance type: %w", err)
+				}
+
+				schedule = models.ColonyMaintenanceSchedule{
+					ColonyID:          record.ColonyID,
+					MaintenanceTypeID: record.MaintenanceTypeID,
+					FrequencyDays:     maintenanceType.FrequencyDays,
+					Enabled:           true,
+					LastPerformedDate: &record.MaintenanceDate,
+					UserID:            record.UserID,
+				}
+
+				return tx.Create(&schedule).Error
+			}
+			return err
+		}
+
+		schedule.LastPerformedDate = &record.MaintenanceDate
+		return tx.Save(&schedule).Error
+	})
+
+	if err != nil {
+		return int64(record.ID), fmt.Errorf("failed to update maintenance schedule: %w", err)
+	}
+
+	return int64(record.ID), nil
+}
+
+func (db *TarantulaDB) GetColonyMaintenanceAlerts(ctx context.Context, userID int64) ([]models.ColonyMaintenanceAlert, error) {
+	var alerts []models.ColonyMaintenanceAlert
+
+	result := db.db.WithContext(ctx).Raw(`
+        WITH LastMaintenance AS (
+            SELECT
+                cms.colony_id,
+                cms.maintenance_type_id,
+                cms.frequency_days,
+                cms.user_id,
+                cms.last_performed_date,
+                cmt.type_name as maintenance_type,
+                cc.colony_name,
+                CASE
+                    WHEN cms.last_performed_date IS NOT NULL THEN
+                        (CURRENT_DATE - cms.last_performed_date)
+                    ELSE
+                        (CURRENT_DATE - cms.created_at::date)
+                END as days_since_last_done
+            FROM spider_bot.colony_maintenance_schedules cms
+                JOIN spider_bot.colony_maintenance_types cmt ON cms.maintenance_type_id = cmt.id
+                JOIN spider_bot.cricket_colonies cc ON cms.colony_id = cc.id
+            WHERE cms.enabled = TRUE AND cms.user_id = ?
+        )
+        SELECT
+            lm.colony_id as id,
+            lm.colony_name,
+            lm.maintenance_type,
+            lm.days_since_last_done::INTEGER as days_since_last_done,
+            (lm.days_since_last_done - lm.frequency_days)::INTEGER as days_overdue
+        FROM LastMaintenance lm
+        WHERE lm.days_since_last_done > lm.frequency_days
+        ORDER BY days_overdue DESC`, userID).
+		Scan(&alerts)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colony maintenance alerts: %w", result.Error)
+	}
+
+	return alerts, nil
+}
+
+func (db *TarantulaDB) GetColonyMaintenanceHistory(ctx context.Context, colonyID int64, userID int64, limit int32) ([]models.ColonyMaintenanceRecord, error) {
+	var records []models.ColonyMaintenanceRecord
+
+	result := db.db.WithContext(ctx).
+		Preload("MaintenanceType").
+		Preload("Colony").
+		Where("colony_id = ? AND user_id = ?", colonyID, userID).
+		Order("maintenance_date DESC").
+		Limit(int(limit)).
+		Find(&records)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colony maintenance history: %w", result.Error)
+	}
+
+	return records, nil
+}
+
+func (db *TarantulaDB) GetMaintenanceTypes(ctx context.Context) ([]models.ColonyMaintenanceType, error) {
+	var types []models.ColonyMaintenanceType
+
+	result := db.db.WithContext(ctx).Find(&types)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get maintenance types: %w", result.Error)
+	}
+
+	return types, nil
 }

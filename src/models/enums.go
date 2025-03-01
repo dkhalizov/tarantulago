@@ -217,3 +217,72 @@ func (c *CricketSizeEnum) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
+type ColonyMaintenanceTypeEnum int
+
+const (
+	ColonyMaintenanceCount        ColonyMaintenanceTypeEnum = 1
+	ColonyMaintenanceFoodWater    ColonyMaintenanceTypeEnum = 2
+	ColonyMaintenanceCleaning     ColonyMaintenanceTypeEnum = 3
+	ColonyMaintenanceAdultRemoval ColonyMaintenanceTypeEnum = 4
+)
+
+func (c ColonyMaintenanceTypeEnum) ToDBName() string {
+	switch c {
+	case ColonyMaintenanceCount:
+		return "Count"
+	case ColonyMaintenanceFoodWater:
+		return "FoodWater"
+	case ColonyMaintenanceCleaning:
+		return "Cleaning"
+	case ColonyMaintenanceAdultRemoval:
+		return "AdultRemoval"
+	default:
+		return "Unknown"
+	}
+}
+
+func (c ColonyMaintenanceTypeEnum) Description() string {
+	switch c {
+	case ColonyMaintenanceCount:
+		return "Count the current number of crickets"
+	case ColonyMaintenanceFoodWater:
+		return "Check and replace food and water"
+	case ColonyMaintenanceCleaning:
+		return "Clean the cricket enclosure"
+	case ColonyMaintenanceAdultRemoval:
+		return "Remove older crickets to maintain colony quality"
+	default:
+		return "Unknown maintenance type"
+	}
+}
+
+func (c ColonyMaintenanceTypeEnum) DefaultFrequencyDays() int {
+	switch c {
+	case ColonyMaintenanceCount:
+		return 14 // Every two weeks
+	case ColonyMaintenanceFoodWater:
+		return 3 // Every three days
+	case ColonyMaintenanceCleaning:
+		return 14 // Every two weeks
+	case ColonyMaintenanceAdultRemoval:
+		return 7 // Once a week
+	default:
+		return 7 // Default to weekly
+	}
+}
+
+func ColonyMaintenanceTypeFromID(id int32) ColonyMaintenanceTypeEnum {
+	switch id {
+	case 1:
+		return ColonyMaintenanceCount
+	case 2:
+		return ColonyMaintenanceFoodWater
+	case 3:
+		return ColonyMaintenanceCleaning
+	case 4:
+		return ColonyMaintenanceAdultRemoval
+	default:
+		return ColonyMaintenanceCount
+	}
+}

@@ -41,5 +41,10 @@ type TarantulaOperations interface {
 	GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error)
 	UpdateUserSettings(ctx context.Context, settings *models.UserSettings) error
 
+	RecordColonyMaintenance(ctx context.Context, record models.ColonyMaintenanceRecord) (int64, error)
+	GetColonyMaintenanceAlerts(ctx context.Context, userID int64) ([]models.ColonyMaintenanceAlert, error)
+	GetColonyMaintenanceHistory(ctx context.Context, colonyID int64, userID int64, limit int32) ([]models.ColonyMaintenanceRecord, error)
+	GetMaintenanceTypes(ctx context.Context) ([]models.ColonyMaintenanceType, error)
+
 	NotificationOperations
 }

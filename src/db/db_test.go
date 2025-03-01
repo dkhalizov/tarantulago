@@ -160,13 +160,6 @@ func TestDatabaseOperations(t *testing.T) {
 	}
 	fmt.Printf("Found %d maintenance tasks\n", len(tasks))
 
-	// 10. Get health alerts
-	alerts, err := database.GetHealthAlerts(ctx, userID)
-	if err != nil {
-		t.Fatalf("Failed to get health alerts: %v", err)
-	}
-	fmt.Printf("Found %d health alerts\n", len(alerts))
-
 	// 11. Get recent records
 	recentFeedings, err := database.GetRecentFeedingRecords(ctx, userID, 5)
 	if err != nil {

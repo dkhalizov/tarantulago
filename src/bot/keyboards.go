@@ -219,7 +219,7 @@ func (t *TarantulaBot) setupHandlers() {
 			return nil
 		}
 	})
-
+	t.setupColonyMaintenanceHandlers()
 	t.setupInlineKeyboards()
 }
 
@@ -525,4 +525,188 @@ func (t *TarantulaBot) handleFeedScheduler(c tele.Context, tarantulaId int) erro
 		msg.WriteString(fmt.Sprintf("📝 Notes: %s\n", schedule.Notes))
 	}
 	return c.Send(msg.String())
+}
+
+func (t *TarantulaBot) setupColonyMaintenanceHandlers() {
+	b := t.bot
+
+	btnColonyMaintenance := menu.colony.Text("🧹 Colony Maintenance")
+	menu.colony.Reply(
+		menu.colony.Row(btnColonyStatus, btnUpdateCount),
+		menu.colony.Row(btnAddColony, btnColonyMaintenance),
+		menu.colony.Row(menu.back),
+	)
+
+	b.Handle(&btnColonyMaintenance, t.handleColonyMaintenanceMenu)
+}
+
+func (t *TarantulaBot) handleColonyMaintenanceMenu(c tele.Context) error {
+	colonies, err := t.db.GetColonyStatus(t.ctx, c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get colonies: %w", err)
+	}
+
+	if len(colonies) == 0 {
+		return c.Send("No cricket colonies found. Add a colony first.")
+	}
+
+	var rows [][]tele.InlineButton
+	for _, colony := range colonies {
+		btn := tele.InlineButton{
+			Text: fmt.Sprintf("🦗 %s (%d crickets)", colony.ColonyName, colony.CurrentCount),
+			Data: fmt.Sprintf("colony_maintain_select_%d", colony.ID),
+		}
+		rows = append(rows, []tele.InlineButton{btn})
+	}
+
+	return c.Send("Select a colony to maintain:", &tele.ReplyMarkup{
+		InlineKeyboard: rows,
+	})
+}
+
+func (t *TarantulaBot) handleSelectColonyForMaintenance(c tele.Context, colonyID int) error {
+	alerts, err := t.db.GetColonyMaintenanceAlerts(t.ctx, c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get maintenance alerts: %w", err)
+	}
+
+	colonies, err := t.db.GetColonyStatus(t.ctx, c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get colony: %w", err)
+	}
+
+	var colony models.ColonyStatus
+	for _, col := range colonies {
+		if int(col.ID) == colonyID {
+			colony = col
+			break
+		}
+	}
+
+	if colony.ID == 0 {
+		return c.Send("Colony not found.")
+	}
+
+	maintenanceTypes, err := t.db.GetMaintenanceTypes(t.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get maintenance types: %w", err)
+	}
+
+	msg := fmt.Sprintf("🦗 *%s* (%d crickets)\n\n", colony.ColonyName, colony.CurrentCount)
+
+	colonyAlerts := make(map[string]models.ColonyMaintenanceAlert)
+	for _, alert := range alerts {
+		if int(alert.ID) == colonyID {
+			colonyAlerts[alert.MaintenanceType] = alert
+		}
+	}
+
+	if len(colonyAlerts) > 0 {
+		msg += "⚠️ *Maintenance Due:*\n"
+		for _, alert := range colonyAlerts {
+			msg += fmt.Sprintf("• %s - %d days overdue\n", alert.MaintenanceType, alert.DaysOverdue)
+		}
+		msg += "\n"
+	}
+
+	msg += "Select a maintenance action to record:"
+
+	var rows [][]tele.InlineButton
+	for _, mType := range maintenanceTypes {
+		var alertIndicator string
+		if _, exists := colonyAlerts[mType.TypeName]; exists {
+			alertIndicator = "⚠️ "
+		}
+
+		btn := tele.InlineButton{
+			Text: fmt.Sprintf("%s%s", alertIndicator, mType.TypeName),
+			Data: fmt.Sprintf("colony_maintain_record_%d_%d", colonyID, mType.ID),
+		}
+		rows = append(rows, []tele.InlineButton{btn})
+	}
+
+	historyBtn := tele.InlineButton{
+		Text: "📜 View Maintenance History",
+		Data: fmt.Sprintf("colony_maintain_history_%d", colonyID),
+	}
+	rows = append(rows, []tele.InlineButton{historyBtn})
+
+	keyboard := &tele.ReplyMarkup{
+		InlineKeyboard: rows,
+	}
+
+	if c.Callback() != nil {
+		return c.Edit(msg, keyboard)
+	}
+
+	return c.Send(msg, keyboard)
+}
+
+func (t *TarantulaBot) handleRecordColonyMaintenance(c tele.Context, colonyID, typeID int) error {
+	record := models.ColonyMaintenanceRecord{
+		ColonyID:          colonyID,
+		MaintenanceTypeID: typeID,
+		MaintenanceDate:   time.Now(),
+		UserID:            c.Sender().ID,
+	}
+
+	_, err := t.db.RecordColonyMaintenance(t.ctx, record)
+	if err != nil {
+		return fmt.Errorf("failed to record maintenance: %w", err)
+	}
+
+	maintenanceTypes, err := t.db.GetMaintenanceTypes(t.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get maintenance types: %w", err)
+	}
+
+	var typeName string
+	for _, mt := range maintenanceTypes {
+		if mt.ID == typeID {
+			typeName = mt.TypeName
+			break
+		}
+	}
+
+	msg := fmt.Sprintf("✅ %s maintenance recorded!", typeName)
+
+	return c.Respond(&tele.CallbackResponse{
+		Text:      msg,
+		ShowAlert: true,
+	})
+}
+
+func (t *TarantulaBot) handleColonyMaintenanceHistory(c tele.Context, colonyID int) error {
+	history, err := t.db.GetColonyMaintenanceHistory(t.ctx, int64(colonyID), c.Sender().ID, 10)
+	if err != nil {
+		return fmt.Errorf("failed to get maintenance history: %w", err)
+	}
+
+	var msg string
+	if len(history) == 0 {
+		msg = "No maintenance records found for this colony."
+	} else {
+		msg = "Recent maintenance records:\n\n"
+		for _, record := range history {
+			formattedDate := record.MaintenanceDate.Format("2006-01-02")
+			msg += fmt.Sprintf("• %s on %s\n", record.MaintenanceType.TypeName, formattedDate)
+		}
+	}
+	var rows [][]tele.InlineButton
+
+	backBtn := tele.InlineButton{
+		Text: "⬅️ Back to Colony List",
+		Data: "colony_maintain_back",
+	}
+	rows = append(rows, []tele.InlineButton{backBtn})
+
+	if c.Callback() != nil {
+		return c.Edit(msg, &tele.ReplyMarkup{
+			InlineKeyboard: rows,
+		})
+	}
+
+	return c.Send(msg, &tele.ReplyMarkup{
+		InlineKeyboard: rows,
+	})
 }
