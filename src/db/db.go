@@ -839,7 +839,7 @@ func (db *TarantulaDB) GetColonyMaintenanceAlerts(ctx context.Context, userID in
             lm.days_since_last_done::INTEGER as days_since_last_done,
             (lm.days_since_last_done - lm.frequency_days)::INTEGER as days_overdue
         FROM LastMaintenance lm
-        WHERE lm.days_since_last_done > lm.frequency_days
+        WHERE lm.days_since_last_done >= lm.frequency_days
         ORDER BY days_overdue DESC`, userID).
 		Scan(&alerts)
 
