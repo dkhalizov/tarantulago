@@ -87,6 +87,21 @@ func (t *TarantulaBot) setupHandlers() {
 		return c.Send("🕷 Welcome to TarantulaGo! Choose an option:", menu.main)
 	})
 
+	b.Handle("/check", func(c tele.Context) error {
+		settings, err := t.db.GetUserSettings(t.ctx, c.Sender().ID)
+		if err != nil {
+			return fmt.Errorf("failed to get user settings: %w", err)
+		}
+		t.notifications.triggerChecks(models.TelegramUser{
+			TelegramID: c.Sender().ID,
+			FirstName:  c.Sender().FirstName,
+			ChatID:     c.Chat().ID,
+			LastName:   c.Sender().LastName,
+			Username:   c.Sender().Username,
+		}, settings)
+		return c.Send("🔔 Notifications checked!")
+	})
+
 	b.Handle(&btnTarantulas, func(c tele.Context) error {
 		return c.Send("Tarantula Management:", menu.tarantula)
 	})

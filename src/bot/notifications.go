@@ -90,11 +90,15 @@ func (n *NotificationSystem) processScheduledNotifications() {
 		}
 
 		if n.shouldSendNotification(settings) {
-			n.checkFeedings(user.TelegramID, user.ChatID, settings)
-			n.checkColonies(user.TelegramID, user.ChatID, settings)
-			n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
+			n.triggerChecks(user, settings)
 		}
 	}
+}
+
+func (n *NotificationSystem) triggerChecks(user models.TelegramUser, settings *models.UserSettings) {
+	n.checkFeedings(user.TelegramID, user.ChatID, settings)
+	n.checkColonies(user.TelegramID, user.ChatID, settings)
+	n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
 }
 
 func (n *NotificationSystem) checkFeedings(userID int64, chatID int64, settings *models.UserSettings) {
