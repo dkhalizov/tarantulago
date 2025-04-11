@@ -732,10 +732,8 @@ func (db *TarantulaDB) createDefaultSettings(ctx context.Context, userID int64) 
 func (db *TarantulaDB) GetActiveUsers(ctx context.Context) ([]models.TelegramUser, error) {
 	var users []models.TelegramUser
 
-	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
-
 	result := db.db.WithContext(ctx).
-		Where("is_active = ? AND chat_id IS NOT NULL AND last_active > ?", true, thirtyDaysAgo).
+		Where("is_active = ? AND chat_id IS NOT NULL", true).
 		Find(&users)
 
 	if result.Error != nil {
