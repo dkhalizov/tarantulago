@@ -55,10 +55,14 @@ VALUES
 SELECT setval('spider_bot.colony_maintenance_types_id_seq', (SELECT MAX(id) FROM spider_bot.colony_maintenance_types));
 
 ALTER TABLE spider_bot.user_settings
-    ADD COLUMN maintenance_reminder_enabled BOOLEAN DEFAULT TRUE,
-ADD COLUMN food_water_frequency_days INTEGER DEFAULT 3,
-ADD COLUMN cleaning_frequency_days INTEGER DEFAULT 14,
-ADD COLUMN adult_removal_frequency_days INTEGER DEFAULT 7;
+    ADD COLUMN IF NOT EXISTS maintenance_reminder_enabled BOOLEAN DEFAULT TRUE,
+ADD COLUMN IF NOT EXISTS food_water_frequency_days INTEGER DEFAULT 3,
+ADD COLUMN IF NOT EXISTS cleaning_frequency_days INTEGER DEFAULT 14,
+ADD COLUMN IF NOT EXISTS adult_removal_frequency_days INTEGER DEFAULT 7,
+ADD COLUMN IF NOT EXISTS notifications_paused BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS pause_start_date TIMESTAMP,
+ADD COLUMN IF NOT EXISTS pause_end_date TIMESTAMP,
+ADD COLUMN IF NOT EXISTS pause_reason VARCHAR(255);
 
 CREATE TABLE spider_bot.colony_maintenance_types
 (
@@ -137,6 +141,52 @@ VALUES
     (1, 'Count', 'Count the current number of crickets', 7),
     (2, 'FoodWater', 'Check and replace food and water', 2),
     (3, 'Cleaning', 'Clean the cricket enclosure', 14),
-    (6, 'AdultRemoval', 'Remove adult crickets past feeding age', 7);
+    (6, 'AdultRemoval', 'Remove adult crickets past feeding age', 7)
+ON CONFLICT (id) DO NOTHING;
 
 SELECT setval('spider_bot.colony_maintenance_types_id_seq', (SELECT MAX(id) FROM spider_bot.colony_maintenance_types));
+
+-- Add enhanced tracking fields to tarantulas table
+ALTER TABLE spider_bot.tarantulas 
+    ADD COLUMN IF NOT EXISTS profile_photo_url VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS current_weight_grams FLOAT,
+    ADD COLUMN IF NOT EXISTS last_weigh_date TIMESTAMP;
+
+-- Create weight_records table for tracking weight history
+CREATE TABLE IF NOT EXISTS spider_bot.weight_records (
+    id SERIAL PRIMARY KEY,
+    tarantula_id INTEGER NOT NULL REFERENCES spider_bot.tarantulas(id) ON DELETE CASCADE,
+    weight_grams FLOAT NOT NULL,
+    weigh_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    user_id BIGINT NOT NULL REFERENCES spider_bot.telegram_users(telegram_id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_weight_records_tarantula ON spider_bot.weight_records(tarantula_id);
+CREATE INDEX IF NOT EXISTS idx_weight_records_date ON spider_bot.weight_records(weigh_date);
+CREATE INDEX IF NOT EXISTS idx_weight_records_user ON spider_bot.weight_records(user_id);
+
+-- Create tarantula_photos table for photo management
+CREATE TABLE IF NOT EXISTS spider_bot.tarantula_photos (
+    id SERIAL PRIMARY KEY,
+    tarantula_id INTEGER NOT NULL REFERENCES spider_bot.tarantulas(id) ON DELETE CASCADE,
+    photo_url VARCHAR(255) NOT NULL,
+    photo_type VARCHAR(50) DEFAULT 'general',
+    caption TEXT,
+    taken_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id BIGINT NOT NULL REFERENCES spider_bot.telegram_users(telegram_id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tarantula_photos_tarantula ON spider_bot.tarantula_photos(tarantula_id);
+CREATE INDEX IF NOT EXISTS idx_tarantula_photos_date ON spider_bot.tarantula_photos(taken_date);
+CREATE INDEX IF NOT EXISTS idx_tarantula_photos_user ON spider_bot.tarantula_photos(user_id);
+CREATE INDEX IF NOT EXISTS idx_tarantula_photos_type ON spider_bot.tarantula_photos(photo_type);
+
+-- Insert feeding statuses if they don't exist
+INSERT INTO spider_bot.feeding_statuses (id, status_name, description) VALUES
+(1, 'Accepted', 'Tarantula accepted and consumed the prey'),
+(2, 'Rejected', 'Tarantula refused the prey item'),
+(3, 'Partial', 'Tarantula partially consumed the prey')
+ON CONFLICT (status_name) DO NOTHING;

@@ -19,7 +19,6 @@ func TestDatabaseOperations(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test user ID
 	testUser := &models.TelegramUser{
 		TelegramID: int64(1),
 		Username:   "testuser",
@@ -45,7 +44,7 @@ func TestDatabaseOperations(t *testing.T) {
 		t.Fatalf("Failed to add enclosure: %v", err)
 	}
 	t.Logf("Enclosure ID: %d", enclosureId)
-	// 1. Create a new tarantula
+
 	tarantula := models.Tarantula{
 		Name:                  "Test Spider",
 		SpeciesID:             1,
@@ -55,21 +54,18 @@ func TestDatabaseOperations(t *testing.T) {
 		LastMoltDate:          nil,
 		CurrentMoltStageID:    4,
 		CurrentHealthStatusID: 1,
-		//EnclosureID:           int(enclosureId),
 	}
 	err = database.AddTarantula(ctx, tarantula)
 	if err != nil {
 		t.Fatalf("Failed to add tarantula: %v", err)
 	}
 
-	// 2. Get all tarantulas
 	tarantulas, err := database.GetAllTarantulas(ctx, userID)
 	if err != nil {
 		t.Fatalf("Failed to get tarantulas: %v", err)
 	}
 	fmt.Printf("Found %d tarantulas\n", len(tarantulas))
 
-	// 3. Create a new cricket colony
 	colony := models.CricketColony{
 		ColonyName:   "Test Colony",
 		CurrentCount: 100,
@@ -80,14 +76,12 @@ func TestDatabaseOperations(t *testing.T) {
 		t.Fatalf("Failed to add colony: %v", err)
 	}
 
-	// 4. Get colony status
 	colonies, err := database.GetColonyStatus(ctx, userID)
 	if err != nil {
 		t.Fatalf("Failed to get colony status: %v", err)
 	}
 	fmt.Printf("Found %d colonies\n", len(colonies))
 
-	// 5. Record a feeding event
 	if len(tarantulas) > 0 && len(colonies) > 0 {
 		feedingEvent := models.FeedingEvent{
 			TarantulaID:      int(tarantulas[0].ID),
@@ -103,21 +97,6 @@ func TestDatabaseOperations(t *testing.T) {
 		fmt.Printf("Recorded feeding with ID: %d\n", feedingID)
 	}
 
-	//// 6. Create an enclosure
-	//enclosure := models.Enclosure{
-	//	EnclosureType:    "Terrestrial",
-	//	Dimensions:       "30x30x30",
-	//	SubstrateType:    "Coco fiber",
-	//	HumidityRange:    "60-70%",
-	//	TemperatureRange: "22-26°C",
-	//	UserID:           userID,
-	//}
-	//enclosureID, err := database.CreateEnclosure(ctx, enclosure)
-	//if err != nil {
-	//	t.Fatalf("Failed to create enclosure: %v", err)
-	//}
-
-	// 7. Record a health check
 	if len(tarantulas) > 0 {
 		healthCheck := models.HealthCheckRecord{
 			TarantulaID:        int(tarantulas[0].ID),
@@ -135,7 +114,6 @@ func TestDatabaseOperations(t *testing.T) {
 		}
 	}
 
-	// 8. Record a molt
 	if len(tarantulas) > 0 {
 		lengthCM := float64(8.5)
 		molt := models.MoltRecord{
@@ -153,14 +131,12 @@ func TestDatabaseOperations(t *testing.T) {
 		}
 	}
 
-	// 9. Get maintenance tasks
 	tasks, err := database.GetMaintenanceTasks(ctx, userID)
 	if err != nil {
 		t.Fatalf("Failed to get maintenance tasks: %v", err)
 	}
 	fmt.Printf("Found %d maintenance tasks\n", len(tasks))
 
-	// 11. Get recent records
 	recentFeedings, err := database.GetRecentFeedingRecords(ctx, userID, 5)
 	if err != nil {
 		t.Fatalf("Failed to get recent feeding records: %v", err)
@@ -179,14 +155,11 @@ func TestDatabaseOperations(t *testing.T) {
 	}
 	fmt.Printf("Found %d recent health records\n", len(recentHealth))
 
-	// 12. Get tarantulas due for feeding
 	dueFeedingList, err := database.GetTarantulasDueFeeding(ctx, userID)
 	if err != nil {
 		t.Fatalf("Failed to get tarantulas due feeding: %v", err)
 	}
 	fmt.Printf("Found %d tarantulas due for feeding\n", len(dueFeedingList))
-
-	// 13. Ensure test user exists
 
 	fmt.Println("Database operations test completed!")
 }

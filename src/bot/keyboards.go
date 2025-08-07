@@ -3,11 +3,13 @@ package bot
 import (
 	"context"
 	"fmt"
-	tele "gopkg.in/telebot.v4"
 	"strconv"
 	"strings"
-	"tarantulago/models"
 	"time"
+
+	"tarantulago/models"
+
+	tele "gopkg.in/telebot.v4"
 )
 
 type Menu struct {
@@ -15,6 +17,7 @@ type Menu struct {
 	tarantula *tele.ReplyMarkup
 	settings  *tele.ReplyMarkup
 	colony    *tele.ReplyMarkup
+	analytics *tele.ReplyMarkup
 	back      tele.Btn
 }
 
@@ -26,46 +29,61 @@ var (
 		tarantula: &tele.ReplyMarkup{ResizeKeyboard: true},
 		colony:    &tele.ReplyMarkup{ResizeKeyboard: true},
 		settings:  &tele.ReplyMarkup{ResizeKeyboard: true},
+		analytics: &tele.ReplyMarkup{ResizeKeyboard: true},
 		back:      btnBackToMain,
 	}
 	btnAddTarantula   = menu.tarantula.Text("➕ Add New Tarantula")
 	btnListTarantulas = menu.tarantula.Text("📋 List Tarantulas")
 	btnViewMolts      = menu.tarantula.Text("📊 View Molt History")
+	btnQuickActions   = menu.tarantula.Text("⚡ Quick Actions")
 
-	btnColonyStatus = menu.colony.Text("📊 Colony Status")
-	btnUpdateCount  = menu.colony.Text("🔢 Update Count")
-	btnAddColony    = menu.colony.Text("➕ Add New Colony")
+	btnColonyStatus   = menu.colony.Text("📊 Cricket Status")
+	btnUpdateCount    = menu.colony.Text("🔢 Update Cricket Count")
+	btnFeedingHistory = menu.colony.Text("📈 Feeding History")
+
+	btnFeedingPatterns = menu.analytics.Text("🍽️ Feeding Patterns")
+	btnGrowthCharts    = menu.analytics.Text("📈 Growth Charts")
+	btnAnnualReports   = menu.analytics.Text("📋 Annual Reports")
+	btnMoltPredictions = menu.analytics.Text("🔮 Molt Predictions")
 
 	btnTarantulas = menu.main.Text("🕷 Tarantulas")
 	btnFeeding    = menu.main.Text("🪱 Feeding")
-	btnColony     = menu.main.Text("🦗 Colony Management")
+	btnColony     = menu.main.Text("🦗 Quick Feed")
+	btnAnalytics  = menu.main.Text("📊 Analytics")
 	btnSettings   = menu.main.Text("⚙️ Settings")
 
-	btnNotifications = menu.settings.Text("🔔 Notification Settings")
-	btnColonyAlerts  = menu.settings.Text("🦗 Colony Alerts")
+	btnNotifications      = menu.settings.Text("🔔 Notification Settings")
+	btnPauseNotifications = menu.settings.Text("⏸️ Pause Notifications")
 )
 
 func (m *Menu) init() {
 	m.main.Reply(
 		m.main.Row(btnTarantulas, btnFeeding),
-		m.main.Row(btnColony, btnSettings),
+		m.main.Row(btnColony, btnAnalytics),
+		m.main.Row(btnSettings),
 	)
 
 	m.tarantula.Reply(
 		m.tarantula.Row(btnAddTarantula, btnListTarantulas),
-		m.tarantula.Row(btnViewMolts),
+		m.tarantula.Row(btnViewMolts, btnQuickActions),
 		m.tarantula.Row(m.back),
 	)
 
 	m.colony.Reply(
 		m.colony.Row(btnColonyStatus, btnUpdateCount),
-		m.colony.Row(btnAddColony),
+		m.colony.Row(btnFeedingHistory),
 		m.colony.Row(m.back),
+	)
+
+	m.analytics.Reply(
+		m.analytics.Row(btnFeedingPatterns, btnGrowthCharts),
+		m.analytics.Row(btnAnnualReports, btnMoltPredictions),
+		m.analytics.Row(m.back),
 	)
 
 	menu.settings.Reply(
 		menu.settings.Row(btnNotifications),
-		menu.settings.Row(btnColonyAlerts),
+		menu.settings.Row(btnPauseNotifications),
 		menu.settings.Row(menu.back),
 	)
 }
@@ -107,7 +125,11 @@ func (t *TarantulaBot) setupHandlers() {
 	})
 
 	b.Handle(&btnColony, func(c tele.Context) error {
-		return c.Send("Cricket Colony Management:", menu.colony)
+		return t.handleQuickActions(c)
+	})
+
+	b.Handle(&btnQuickActions, func(c tele.Context) error {
+		return t.handleQuickActions(c)
 	})
 
 	b.Handle(&btnBackToMain, func(c tele.Context) error {
@@ -124,10 +146,103 @@ func (t *TarantulaBot) setupHandlers() {
 	})
 
 	b.Handle(&btnNotifications, t.handleNotificationSettings)
-	b.Handle(&btnColonyAlerts, t.handleColonyAlertSettings)
+	b.Handle(&btnPauseNotifications, t.handlePauseNotificationSettings)
 
 	b.Handle(&btnSettings, func(c tele.Context) error {
 		return c.Send("⚙️ Settings:", menu.settings)
+	})
+
+	b.Handle(&btnAnalytics, func(c tele.Context) error {
+		return c.Send("📊 Analytics & Reports:", menu.analytics)
+	})
+
+	b.Handle(&btnFeedingPatterns, func(c tele.Context) error {
+		patterns, err := t.db.GetAllFeedingPatterns(context.Background(), c.Sender().ID)
+		if err != nil {
+			return SendError(c, fmt.Sprintf("Error: %v", err))
+		}
+
+		if len(patterns) == 0 {
+			return SendInfo(c, "No feeding data available yet. Feed your tarantulas to generate patterns!")
+		}
+
+		msg := "🍽️ *Feeding Pattern Analysis*\n\n"
+		for _, pattern := range patterns {
+			msg += FormatFeedingPattern(pattern) + "\n"
+		}
+
+		return c.Send(msg, tele.ModeMarkdown)
+	})
+
+	b.Handle(&btnGrowthCharts, func(c tele.Context) error {
+		growthData, err := t.db.GetAllGrowthData(context.Background(), c.Sender().ID)
+		if err != nil {
+			return SendError(c, fmt.Sprintf("Error: %v", err))
+		}
+
+		if len(growthData) == 0 {
+			return SendInfo(c, "No growth data available yet. Record molts to generate size progression charts!")
+		}
+
+		msg := "📈 *Growth Tracking Charts*\n\n"
+		for _, data := range growthData {
+			msg += FormatGrowthData(data) + "\n"
+		}
+
+		return c.Send(msg, tele.ModeMarkdown)
+	})
+
+	b.Handle(&btnAnnualReports, func(c tele.Context) error {
+		currentYear := time.Now().Year()
+		reports, err := t.db.GetAllAnnualReports(context.Background(), currentYear, c.Sender().ID)
+		if err != nil {
+			return fmt.Errorf("failed to get annual reports: %w", err)
+		}
+
+		if len(reports) == 0 {
+			return c.Send("📋 No data for " + strconv.Itoa(currentYear) + " yet. Keep tracking your tarantulas!")
+		}
+
+		msg := fmt.Sprintf("📋 *Annual Report %d*\n\n", currentYear)
+
+		var totalCrickets int32
+		var totalCost float64
+
+		for _, report := range reports {
+			msg += fmt.Sprintf("*%s*\n", report.TarantulaName)
+			msg += fmt.Sprintf("🍽️ Fed %d times (%d crickets)\n", report.TotalFeedings, report.TotalCrickets)
+			msg += fmt.Sprintf("✅ %.1f%% acceptance rate\n", report.AcceptanceRate)
+
+			if report.MoltCount > 0 {
+				msg += fmt.Sprintf("🔄 Molted %d time(s)\n", report.MoltCount)
+			}
+
+			if report.PhotosAdded > 0 {
+				msg += fmt.Sprintf("📸 Added %d photos\n", report.PhotosAdded)
+			}
+
+			if len(report.Milestones) > 0 {
+				msg += "🏆 Milestones:\n"
+				for _, milestone := range report.Milestones {
+					msg += fmt.Sprintf("  • %s\n", milestone)
+				}
+			}
+
+			msg += fmt.Sprintf("💰 Est. cost: $%.2f\n\n", report.EstimatedCost)
+
+			totalCrickets += report.TotalCrickets
+			totalCost += report.EstimatedCost
+		}
+
+		msg += "📊 *Total Summary*\n"
+		msg += fmt.Sprintf("🦗 %d crickets consumed\n", totalCrickets)
+		msg += fmt.Sprintf("💰 $%.2f estimated cost\n", totalCost)
+
+		return c.Send(msg, tele.ModeMarkdown)
+	})
+
+	b.Handle(&btnMoltPredictions, func(c tele.Context) error {
+		return t.handleMoltPredictionsOverview(c)
 	})
 
 	b.Handle(&btnColonyStatus, func(c tele.Context) error {
@@ -136,15 +251,24 @@ func (t *TarantulaBot) setupHandlers() {
 			return fmt.Errorf("failed to get colony status: %w", err)
 		}
 		var msg string
-		if colonyStatuses == nil {
-			msg = "No cricket colonies found."
+		if len(colonyStatuses) == 0 {
+			msg = "🦗 No cricket colony found.\n\n💡 Use 'Update Cricket Count' to set your current cricket amount!"
 		} else {
-			msg = "Colony Statuses:\n"
-			for _, status := range colonyStatuses {
-				msg += fmt.Sprintf("🦗 %s: %d\n", status.ColonyName, status.CurrentCount)
+			colony := colonyStatuses[0]
+			msg = fmt.Sprintf("🦗 *Cricket Status*\n\n"+
+				"Current Count: *%d crickets*\n"+
+				"Used in last 7 days: *%d crickets*\n",
+				colony.CurrentCount, colony.CricketsUsed7Days)
+
+			if colony.WeeksRemaining != nil {
+				if *colony.WeeksRemaining < 2 {
+					msg += fmt.Sprintf("⚠️ Low stock: ~%.1f weeks remaining\n", *colony.WeeksRemaining)
+				} else {
+					msg += fmt.Sprintf("✅ Stock: ~%.1f weeks remaining\n", *colony.WeeksRemaining)
+				}
 			}
 		}
-		return c.Send(msg)
+		return c.Send(msg, tele.ModeMarkdown)
 	})
 
 	b.Handle(&btnAddTarantula, func(c tele.Context) error {
@@ -156,62 +280,170 @@ func (t *TarantulaBot) setupHandlers() {
 		return c.Send("Let's add a new tarantula! What's their name?")
 	})
 
-	t.bot.Handle(&btnListTarantulas, func(c tele.Context) error {
+	b.Handle(&btnListTarantulas, func(c tele.Context) error {
 		return t.showTarantulaList(c)
 	})
 
 	b.Handle(&btnUpdateCount, func(c tele.Context) error {
 		session := t.sessions.GetSession(c.Sender().ID)
 		session.CurrentState = StateAddingCrickets
-		session.CurrentField = FieldColonyID
+		session.CurrentField = FieldColonyCount
 		t.sessions.UpdateSession(c.Sender().ID, session)
 
-		return c.Send("What's the colony ID?")
+		return c.Send("🦗 Enter your current cricket count:")
 	})
 
 	b.Handle(&btnFeeding, func(c tele.Context) error {
+
 		recentFeedings, err := t.db.GetRecentFeedingRecords(t.ctx, c.Sender().ID, 10)
 		if err != nil {
-			return fmt.Errorf("failed to get tarantulas: %w", err)
-		}
-		var msg string
-		if len(recentFeedings) == 0 {
-			msg = "No feeding records found."
-		} else {
-			msg = "Recent feeding records:\n"
-			for _, record := range recentFeedings {
-				msg += fmt.Sprintf("🕷 %s fed on %s. Days since %0.2f\n", record.Tarantula.Name, record.FeedingDate.Format("2006-01-02"),
-					time.Now().Sub(record.FeedingDate).Round(time.Hour*24).Hours()/24)
-			}
+			return SendError(c, fmt.Sprintf("Failed to get feeding records: %v", err))
 		}
 
-		return c.Send(msg)
-	})
-
-	b.Handle(&btnAddColony, func(c tele.Context) error {
-		session := t.sessions.GetSession(c.Sender().ID)
-		session.CurrentState = StateAddingColony
-		session.CurrentField = FieldColonyName
-		t.sessions.UpdateSession(c.Sender().ID, session)
-
-		return c.Send("Let's add a new cricket colony! What's the name?")
-	})
-
-	b.Handle(&btnViewMolts, func(c tele.Context) error {
-		moltRecords, err := t.db.GetRecentMoltRecords(context.Background(), c.Sender().ID, 10)
+		tarantulas, err := t.db.GetAllTarantulas(t.ctx, c.Sender().ID)
 		if err != nil {
-			return fmt.Errorf("failed to get recent molt records: %w", err)
+			return SendError(c, fmt.Sprintf("Failed to get tarantulas: %v", err))
 		}
-		var msg string
-		if len(moltRecords) == 0 {
-			msg = "No molt records found."
+
+		var msg strings.Builder
+		msg.WriteString("🍽️ *Feeding Dashboard*\n\n")
+
+		if len(tarantulas) > 0 {
+			msg.WriteString("📊 *Feeding Status Overview:*\n")
+			for _, spider := range tarantulas {
+				daysSince := int(spider.DaysSinceFeeding)
+				statusEmoji, _ := GetFeedingStatusWithMolt(daysSince, int(spider.MinDays), int(spider.MaxDays), spider.CurrentStatus)
+
+				lastFed := "Never"
+				if daysSince < 999 {
+					lastFed = fmt.Sprintf("%d days ago", daysSince)
+				}
+
+				msg.WriteString(fmt.Sprintf("%s *%s* - %s\n", statusEmoji, spider.Name, lastFed))
+			}
+			msg.WriteString("\n")
+		}
+
+		if len(recentFeedings) == 0 {
+			msg.WriteString("📝 *Recent Activity:*\nNo feeding records found.\n")
 		} else {
-			msg = "Recent molt records:\n"
-			for _, record := range moltRecords {
-				msg += fmt.Sprintf("🕷 %s molted on %s\n", record.Tarantula.Name, record.MoltDate.Format("2006-01-02"))
+			msg.WriteString("📝 *Recent Feeding History:*\n")
+			for i, record := range recentFeedings {
+				if i >= 8 {
+					break
+				}
+
+				status := "✅"
+				if record.FeedingStatus.StatusName == "Rejected" {
+					status = "❌"
+				}
+
+				msg.WriteString(fmt.Sprintf("%s *%s* • %s • %s\n",
+					status,
+					record.Tarantula.Name,
+					FormatDate(&record.FeedingDate),
+					FormatDaysAgo(&record.FeedingDate)))
 			}
 		}
-		return c.Send(msg)
+
+		markup := &tele.ReplyMarkup{}
+		var buttons [][]tele.InlineButton
+
+		if len(tarantulas) > 0 {
+
+			needsFeeding := 0
+			overdue := 0
+			for _, spider := range tarantulas {
+				daysSince := int(spider.DaysSinceFeeding)
+				if daysSince >= int(spider.MaxDays) {
+					overdue++
+				} else if daysSince >= int(spider.MinDays) {
+					needsFeeding++
+				}
+			}
+
+			if overdue > 0 || needsFeeding > 0 {
+				msg.WriteString("\n⚠️ *Attention Needed:*\n")
+				if overdue > 0 {
+					msg.WriteString(fmt.Sprintf("🔴 %d tarantula(s) overdue for feeding\n", overdue))
+				}
+				if needsFeeding > 0 {
+					msg.WriteString(fmt.Sprintf("🟡 %d tarantula(s) ready for feeding\n", needsFeeding))
+				}
+			}
+
+			btnQuickFeed := tele.InlineButton{
+				Text: "🚀 Quick Feed",
+				Data: "quick_actions",
+			}
+
+			btnFeedingHistory := tele.InlineButton{
+				Text: "📊 Full History",
+				Data: "feeding_history",
+			}
+
+			buttons = append(buttons, []tele.InlineButton{btnQuickFeed, btnFeedingHistory})
+		}
+
+		btnBack := tele.InlineButton{
+			Text: "⬅️ Back to Main",
+			Data: "back_to_main",
+		}
+		buttons = append(buttons, []tele.InlineButton{btnBack})
+
+		markup.InlineKeyboard = buttons
+		return c.Send(msg.String(), markup, tele.ModeMarkdown)
+	})
+
+	b.Handle(&btnFeedingHistory, func(c tele.Context) error {
+		feedings, err := t.db.GetRecentFeedingRecords(t.ctx, c.Sender().ID, 20)
+		if err != nil {
+			return SendError(c, fmt.Sprintf("Failed to get feeding records: %v", err))
+		}
+
+		var msg strings.Builder
+		msg.WriteString("📊 *Complete Feeding History*\n\n")
+
+		if len(feedings) == 0 {
+			msg.WriteString("No feeding records found.\n")
+		} else {
+
+			spiderFeedings := make(map[string][]models.FeedingEvent)
+			for _, feeding := range feedings {
+				spiderFeedings[feeding.Tarantula.Name] = append(spiderFeedings[feeding.Tarantula.Name], feeding)
+			}
+
+			for spiderName, records := range spiderFeedings {
+				msg.WriteString(fmt.Sprintf("🕷 *%s:*\n", spiderName))
+
+				for i, record := range records {
+					if i >= 5 {
+						msg.WriteString("   _...and more_\n")
+						break
+					}
+
+					status := "✅"
+					if record.FeedingStatus.StatusName == "Rejected" {
+						status = "❌"
+					}
+
+					msg.WriteString(fmt.Sprintf("  %s %s • %d 🦗 • %s\n",
+						status,
+						FormatDate(&record.FeedingDate),
+						record.NumberOfCrickets,
+						FormatDaysAgo(&record.FeedingDate)))
+				}
+				msg.WriteString("\n")
+			}
+		}
+
+		markup := &tele.ReplyMarkup{
+			InlineKeyboard: [][]tele.InlineButton{
+				{{Text: "⬅️ Back to Feeding", Data: "feeding_dashboard"}},
+			},
+		}
+
+		return c.Send(msg.String(), markup, tele.ModeMarkdown)
 	})
 
 	b.Handle(tele.OnText, func(c tele.Context) error {
@@ -230,10 +462,22 @@ func (t *TarantulaBot) setupHandlers() {
 			return t.handleCricketsFormInput(c, session)
 		case StateNotificationSettings:
 			return t.handleSettingsInput(c, session)
+
 		default:
 			return nil
 		}
 	})
+
+	b.Handle(tele.OnPhoto, func(c tele.Context) error {
+		session := t.sessions.GetSession(c.Sender().ID)
+		if session.CurrentState == StateAddingPhoto {
+			return t.handlePhotoInput(c, session)
+		}
+		return nil
+	})
+
+	b.Handle(&btnViewMolts, t.handleViewMolts)
+
 	t.setupColonyMaintenanceHandlers()
 	t.setupInlineKeyboards()
 }
@@ -351,18 +595,40 @@ func (t *TarantulaBot) handleTarantulaInfo(c tele.Context, id int) error {
 }
 
 func sendTarantulaInfo(c tele.Context, tarantula *models.Tarantula) error {
-	msg := fmt.Sprintf(
-		"🕷 *%s*\n"+
-			"Species: %s\n"+
-			"Last Molt: %s\n"+
-			"Health Status: %s",
-		tarantula.Name,
-		tarantula.Species.CommonName,
-		formatDate(tarantula.LastMoltDate),
-		getHealthStatus(tarantula.CurrentHealthStatusID),
-	)
+	msg := fmt.Sprintf("🕷 *%s*\n\n", tarantula.Name)
+	msg += fmt.Sprintf("Species: %s\n", tarantula.Species.CommonName)
+	msg += fmt.Sprintf("Acquired: %s\n", tarantula.AcquisitionDate.Format("2006-01-02"))
 
-	return c.Send(msg)
+	msg += fmt.Sprintf("Size: %.1fcm\n", tarantula.CurrentSize)
+	msg += fmt.Sprintf("Age: %d months\n", tarantula.EstimatedAgeMonths)
+	msg += fmt.Sprintf("Health: %s\n", getHealthStatus(tarantula.CurrentHealthStatusID))
+
+	if tarantula.LastMoltDate != nil {
+		msg += fmt.Sprintf("Last molt: %s\n", formatDate(tarantula.LastMoltDate))
+	}
+
+	if tarantula.Notes != "" {
+		msg += fmt.Sprintf("Notes: %s\n", tarantula.Notes)
+	}
+
+	// Add photo action buttons only
+	markup := &tele.ReplyMarkup{}
+
+	photoBtn := tele.InlineButton{
+		Text: "📸 Add Photo",
+		Data: fmt.Sprintf("add_photo:%d", tarantula.ID),
+	}
+
+	viewPhotosBtn := tele.InlineButton{
+		Text: "🖼️ View Photos",
+		Data: fmt.Sprintf("view_photos:%d", tarantula.ID),
+	}
+
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{photoBtn, viewPhotosBtn},
+	}
+
+	return c.Send(msg, markup, tele.ModeMarkdown)
 }
 
 func formatDate(t *time.Time) string {
@@ -415,7 +681,7 @@ func (t *TarantulaBot) handleNotificationSettings(c tele.Context) error {
 	return c.Send("🔔 Notification Settings:", markup)
 }
 
-func (t *TarantulaBot) handleColonyAlertSettings(c tele.Context) error {
+func (t *TarantulaBot) handlePauseNotificationSettings(c tele.Context) error {
 	settings, err := t.db.GetUserSettings(t.ctx, c.Sender().ID)
 	if err != nil {
 		return fmt.Errorf("failed to get user settings: %w", err)
@@ -423,36 +689,52 @@ func (t *TarantulaBot) handleColonyAlertSettings(c tele.Context) error {
 
 	markup := &tele.ReplyMarkup{}
 
-	thresholdBtn := tele.InlineButton{
-		Text: fmt.Sprintf("🦗 Low Colony Alert: %d crickets", settings.LowColonyThreshold),
-		Data: "set_colony_threshold",
+	var pauseBtn, unpauseBtn, pause1Day, pause3Day, pause1Week tele.InlineButton
+
+	if settings.NotificationsPaused {
+		unpauseBtn = tele.InlineButton{
+			Text: "▶️ Resume Notifications",
+			Data: "unpause_notifications",
+		}
+
+		var statusText string
+		if settings.PauseEndDate != nil {
+			statusText = fmt.Sprintf("⏸️ Paused until %s", settings.PauseEndDate.Format("2006-01-02 15:04"))
+		} else {
+			statusText = "⏸️ Paused indefinitely"
+		}
+
+		markup.InlineKeyboard = [][]tele.InlineButton{
+			{unpauseBtn},
+		}
+
+		return c.Send(fmt.Sprintf("🔕 Notifications Status: %s", statusText), markup)
+	} else {
+		pause1Day = tele.InlineButton{
+			Text: "⏸️ Pause 1 Day",
+			Data: "pause_1_day",
+		}
+		pause3Day = tele.InlineButton{
+			Text: "⏸️ Pause 3 Days",
+			Data: "pause_3_days",
+		}
+		pause1Week = tele.InlineButton{
+			Text: "⏸️ Pause 1 Week",
+			Data: "pause_1_week",
+		}
+		pauseBtn = tele.InlineButton{
+			Text: "⏸️ Pause Indefinitely",
+			Data: "pause_indefinitely",
+		}
+
+		markup.InlineKeyboard = [][]tele.InlineButton{
+			{pause1Day, pause3Day},
+			{pause1Week},
+			{pauseBtn},
+		}
+
+		return c.Send("🔔 Notifications are currently active. Choose pause duration:", markup)
 	}
-
-	markup.InlineKeyboard = [][]tele.InlineButton{
-		{thresholdBtn},
-	}
-
-	return c.Send("🦗 Colony Alert Settings:", markup)
-}
-
-func (t *TarantulaBot) handleToggleNotifications(c tele.Context) error {
-	settings, err := t.db.GetUserSettings(t.ctx, c.Sender().ID)
-	if err != nil {
-		return fmt.Errorf("failed to get user settings: %w", err)
-	}
-
-	settings.NotificationEnabled = !settings.NotificationEnabled
-	err = t.db.UpdateUserSettings(t.ctx, settings)
-	if err != nil {
-		return fmt.Errorf("failed to update user settings: %w", err)
-	}
-
-	status := "enabled"
-	if !settings.NotificationEnabled {
-		status = "disabled"
-	}
-
-	return c.Send(fmt.Sprintf("✅ Notifications %s", status))
 }
 
 func (t *TarantulaBot) handleSetNotificationTime(c tele.Context) error {
@@ -469,14 +751,6 @@ func (t *TarantulaBot) handleSetFeedingReminder(c tele.Context) error {
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
 	return c.Send("How many days before feeding would you like to be reminded?")
-}
-
-func (t *TarantulaBot) handleSetColonyThreshold(c tele.Context) error {
-	session := t.sessions.GetSession(c.Sender().ID)
-	session.CurrentField = "colony_threshold"
-	t.sessions.UpdateSession(c.Sender().ID, session)
-
-	return c.Send("At what number of crickets should I warn you about low colony count?")
 }
 
 func (t *TarantulaBot) handleSettingsInput(c tele.Context, session *UserSession) error {
@@ -498,13 +772,6 @@ func (t *TarantulaBot) handleSettingsInput(c tele.Context, session *UserSession)
 			return c.Send("Please enter a valid number of days (greater than 0)")
 		}
 		settings.FeedingReminderDays = days
-
-	case "colony_threshold":
-		threshold, err := strconv.Atoi(c.Text())
-		if err != nil || threshold <= 0 {
-			return c.Send("Please enter a valid number of crickets (greater than 0)")
-		}
-		settings.LowColonyThreshold = threshold
 	}
 
 	err = t.db.UpdateUserSettings(t.ctx, settings)
@@ -548,7 +815,7 @@ func (t *TarantulaBot) setupColonyMaintenanceHandlers() {
 	btnColonyMaintenance := menu.colony.Text("🧹 Colony Maintenance")
 	menu.colony.Reply(
 		menu.colony.Row(btnColonyStatus, btnUpdateCount),
-		menu.colony.Row(btnAddColony, btnColonyMaintenance),
+		menu.colony.Row(btnFeedingHistory, btnColonyMaintenance),
 		menu.colony.Row(menu.back),
 	)
 
@@ -724,4 +991,181 @@ func (t *TarantulaBot) handleColonyMaintenanceHistory(c tele.Context, colonyID i
 	return c.Send(msg, &tele.ReplyMarkup{
 		InlineKeyboard: rows,
 	})
+}
+
+func (t *TarantulaBot) handlePhotoInput(c tele.Context, session *UserSession) error {
+	if session.CurrentField != FieldPhoto {
+		return nil
+	}
+
+	if c.Message().Photo == nil {
+		return c.Send("Please send a photo")
+	}
+
+	// Get the largest photo size
+	photo := c.Message().Photo
+	photoFile := photo.File
+
+	// In a real implementation, you'd save the photo to cloud storage
+	// For now, we'll use the file_id as the URL
+	photoURL := photoFile.FileID
+
+	photoRecord := models.TarantulaPhoto{
+		TarantulaID: session.TarantulaData.ID,
+		PhotoURL:    photoURL,
+		PhotoType:   "general",
+		Caption:     "Photo uploaded via bot",
+		UserID:      c.Sender().ID,
+	}
+
+	_, err := t.db.AddPhoto(t.ctx, photoRecord)
+	if err != nil {
+		return fmt.Errorf("failed to save photo: %w", err)
+	}
+
+	// Update profile photo if it's the first one
+	tarantula, err := t.db.GetTarantulaByID(t.ctx, c.Sender().ID, int32(session.TarantulaData.ID))
+	if err == nil && tarantula.ProfilePhotoURL == "" {
+		_ = t.db.UpdateTarantulaProfilePhoto(t.ctx, int32(session.TarantulaData.ID), photoURL, c.Sender().ID)
+	}
+
+	session.reset()
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("📸 Photo added successfully!")
+}
+
+func (t *TarantulaBot) handleViewMolts(c tele.Context) error {
+	moltRecords, err := t.db.GetRecentMoltRecords(t.ctx, c.Sender().ID, 20)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get molt records: %v", err))
+	}
+
+	if len(moltRecords) == 0 {
+		return SendInfo(c, "🔄 No molt records found yet.\n\n💡 Record Molts when your tarantulas molt to track their growth and development!")
+	}
+
+	msg := "🔄 **Recent Molt History**\n\n"
+	for i, record := range moltRecords {
+		if i >= 15 { // Limit display
+			break
+		}
+
+		daysAgo := int(time.Since(record.MoltDate).Hours() / 24)
+		msg += fmt.Sprintf("🕷️ **%s**\n", record.Tarantula.Name)
+		msg += fmt.Sprintf("📅 %s (%d days ago)\n", record.MoltDate.Format("2006-01-02"), daysAgo)
+
+		if record.PreMoltLengthCM > 0 && record.PostMoltLengthCM > 0 {
+			growth := record.PostMoltLengthCM - record.PreMoltLengthCM
+			msg += fmt.Sprintf("📏 %.1fcm → %.1fcm (+%.1fcm)\n",
+				record.PreMoltLengthCM, record.PostMoltLengthCM, growth)
+		} else if record.PostMoltLengthCM > 0 {
+			msg += fmt.Sprintf("📏 Size after molt: %.1fcm\n", record.PostMoltLengthCM)
+		}
+
+		if record.Notes != "" {
+			msg += fmt.Sprintf("📝 %s\n", record.Notes)
+		}
+
+		msg += "\n"
+	}
+
+	return c.Send(msg, tele.ModeMarkdown)
+}
+
+func (t *TarantulaBot) handleQuickActions(c tele.Context) error {
+	tarantulas, err := t.db.GetAllTarantulas(context.Background(), c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get tarantulas: %w", err)
+	}
+
+	if len(tarantulas) == 0 {
+		return c.Send("No tarantulas found. Add one first!")
+	}
+
+	markup := &tele.ReplyMarkup{}
+	var buttons [][]tele.InlineButton
+
+	for _, spider := range tarantulas {
+		daysSince := int(spider.DaysSinceFeeding)
+		statusEmoji := "🟢"
+		if daysSince > int(spider.MaxDays) {
+			statusEmoji = "🔴"
+		} else if daysSince >= int(spider.MinDays) {
+			statusEmoji = "🟡"
+		}
+
+		button := tele.InlineButton{
+			Text: fmt.Sprintf("%s %s (%dd)", statusEmoji, spider.Name, daysSince),
+			Data: fmt.Sprintf("quick_feed:%d", spider.ID),
+		}
+		buttons = append(buttons, []tele.InlineButton{button})
+	}
+
+	markup.InlineKeyboard = buttons
+	return c.Send("🚀 Quick Feed - Tap to feed with 1 cricket:", markup)
+}
+
+// Temporary debug function to troubleshoot feeding status
+func (t *TarantulaBot) handleDebugStatus(c tele.Context) error {
+	userID := GetUserID(c)
+
+	tarantulas, err := t.db.GetAllTarantulas(t.ctx, userID)
+	if err != nil {
+		return SendError(c, "Failed to load tarantula data")
+	}
+
+	msg := "🐛 **Debug: Feeding Status Data**\n\n"
+	for _, spider := range tarantulas {
+		emoji, status := GetFeedingStatusWithMolt(int(spider.DaysSinceFeeding), int(spider.MinDays), int(spider.MaxDays), spider.CurrentStatus)
+
+		msg += fmt.Sprintf("**%s %s**\n", emoji, spider.Name)
+		msg += fmt.Sprintf("• Days since feeding: %.1f\n", spider.DaysSinceFeeding)
+		msg += fmt.Sprintf("• Min days: %d\n", spider.MinDays)
+		msg += fmt.Sprintf("• Max days: %d\n", spider.MaxDays)
+		msg += fmt.Sprintf("• Current status: %s\n", spider.CurrentStatus)
+		msg += fmt.Sprintf("• Feeding status: %s\n", status)
+		msg += fmt.Sprintf("• Species ID: %d\n", spider.SpeciesID)
+		msg += fmt.Sprintf("• Frequency ID: %d\n\n", spider.FrequencyID)
+	}
+
+	return SendInfo(c, msg)
+}
+
+// Temporary debug function to troubleshoot molt predictions
+func (t *TarantulaBot) handleDebugMolts(c tele.Context) error {
+	userID := GetUserID(c)
+
+	// Get recent molt records
+	molts, err := t.db.GetRecentMoltRecords(t.ctx, userID, 20)
+	if err != nil {
+		return SendError(c, "Failed to get molt records")
+	}
+
+	msg := "🐛 **Debug: Molt Records**\n\n"
+	if len(molts) == 0 {
+		msg += "No molt records found.\n"
+	} else {
+		for _, molt := range molts {
+			msg += fmt.Sprintf("**%s**\n", molt.Tarantula.Name)
+			msg += fmt.Sprintf("• Molt date: %s\n", molt.MoltDate.Format("2006-01-02"))
+			msg += fmt.Sprintf("• Days ago: %d\n", int(time.Since(molt.MoltDate).Hours()/24))
+			if molt.PostMoltLengthCM > 0 {
+				msg += fmt.Sprintf("• Size: %.1f cm\n", molt.PostMoltLengthCM)
+			}
+			msg += "\n"
+		}
+	}
+
+	return SendInfo(c, msg)
+}
+
+// Helper function to safely send or edit message based on context
+func (t *TarantulaBot) sendOrEdit(c tele.Context, text string, options ...interface{}) error {
+	// Try to edit first (if this is a callback from inline button)
+	if c.Callback() != nil {
+		return c.Edit(text, options...)
+	}
+	// Otherwise send new message (if this is from menu button)
+	return c.Send(text, options...)
 }

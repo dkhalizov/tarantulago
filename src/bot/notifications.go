@@ -3,10 +3,11 @@ package bot
 import (
 	"context"
 	"fmt"
-	tele "gopkg.in/telebot.v4"
 	"log/slog"
 	"tarantulago/models"
 	"time"
+
+	tele "gopkg.in/telebot.v4"
 )
 
 type NotificationSystem struct {
@@ -34,18 +35,19 @@ func (n *NotificationSystem) Stop() {
 	n.cancel()
 }
 
-type NotificationOperations interface {
-	GetColonyStatus(ctx context.Context, userID int64) ([]models.ColonyStatus, error)
-	GetTarantulasDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaListItem, error)
-	GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error)
-	GetActiveUsers(ctx context.Context) ([]models.TelegramUser, error)
-
-	GetColonyMaintenanceAlerts(ctx context.Context, userID int64) ([]models.ColonyMaintenanceAlert, error)
-}
-
 func (n *NotificationSystem) shouldSendNotification(settings *models.UserSettings) bool {
 	if !settings.NotificationEnabled {
 		return false
+	}
+
+	if settings.NotificationsPaused {
+		now := time.Now().UTC()
+
+		if settings.PauseEndDate != nil && now.After(*settings.PauseEndDate) {
+
+		} else {
+			return false
+		}
 	}
 
 	notificationTime, err := time.Parse("15:04", settings.NotificationTimeUTC)
@@ -97,8 +99,7 @@ func (n *NotificationSystem) processScheduledNotifications() {
 
 func (n *NotificationSystem) triggerChecks(user models.TelegramUser, settings *models.UserSettings) {
 	n.checkFeedings(user.TelegramID, user.ChatID, settings)
-	n.checkColonies(user.TelegramID, user.ChatID, settings)
-	n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
+
 }
 
 func (n *NotificationSystem) checkFeedings(userID int64, chatID int64, settings *models.UserSettings) {
@@ -112,6 +113,10 @@ func (n *NotificationSystem) checkFeedings(userID int64, chatID int64, settings 
 	dueFeedings := make([]models.TarantulaListItem, 0)
 
 	for _, t := range feedings {
+		if t.CurrentStatus == "Pre-molt" || t.CurrentStatus == "Molting" || t.CurrentStatus == "Post-molt" {
+			continue
+		}
+
 		if t.DaysSinceFeeding > float64(t.MaxDays) {
 			overdueFeedings = append(overdueFeedings, t)
 		} else if t.DaysSinceFeeding >= float64(t.MinDays) {
@@ -152,22 +157,14 @@ func (n *NotificationSystem) checkColonies(userID int64, chatID int64, settings 
 		return
 	}
 
-	lowColonies := make([]models.ColonyStatus, 0)
-	for _, colony := range colonies {
+	if len(colonies) > 0 {
+		colony := colonies[0]
 		if colony.CurrentCount <= int32(settings.LowColonyThreshold) {
-			lowColonies = append(lowColonies, colony)
-		}
-	}
+			message := fmt.Sprintf("🦗 *Low Cricket Alert*\n\nYour cricket colony has %d crickets remaining\n\n💡 Consider breeding more crickets soon!", colony.CurrentCount)
 
-	if len(lowColonies) > 0 {
-		message := "🦗 *Low Cricket Colony Alert*\n\n"
-		for _, colony := range lowColonies {
-			message += fmt.Sprintf("• %s - %d crickets remaining\n",
-				colony.ColonyName, colony.CurrentCount)
-		}
-
-		if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message); err != nil {
-			slog.Error("Error sending colony notification", "user_id", userID, "error", err)
+			if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message, tele.ModeMarkdown); err != nil {
+				slog.Error("Error sending colony notification", "user_id", userID, "error", err)
+			}
 		}
 	}
 }

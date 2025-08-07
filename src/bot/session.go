@@ -3,11 +3,12 @@ package bot
 import (
 	"context"
 	"fmt"
-	tele "gopkg.in/telebot.v4"
 	"strconv"
 	"sync"
 	"tarantulago/models"
 	"time"
+
+	tele "gopkg.in/telebot.v4"
 )
 
 type FormState string
@@ -20,6 +21,10 @@ const (
 	StateAddingColony         FormState = "adding_colony"
 	StateFeeding              FormState = "adding_feeding"
 	StateNotificationSettings FormState = "notification_settings"
+	StateRecordingMolt        FormState = "recording_molt"
+	StateRecordingFeeding     FormState = "recording_feeding"
+
+	StateAddingPhoto FormState = "adding_photo"
 )
 
 type TarantulaFormField string
@@ -35,7 +40,7 @@ const (
 
 	FieldPreMoltLengthCM  TarantulaFormField = "pre_molt_length_cm"
 	FieldPostMoltLengthCM TarantulaFormField = "post_molt_length_cm"
-	FieldMoltNotes        TarantulaFormField = "notes"
+	FieldMoltNotes        TarantulaFormField = "molt_notes"
 	FieldSuccess          TarantulaFormField = "success"
 
 	FieldColonyName  TarantulaFormField = "colony_name"
@@ -43,6 +48,8 @@ const (
 
 	FieldColonyID     TarantulaFormField = "colony_id"
 	FieldFeedingCount TarantulaFormField = "feeding_count"
+
+	FieldPhoto TarantulaFormField = "photo"
 )
 
 type UserSession struct {
@@ -313,28 +320,41 @@ func (t *TarantulaBot) handleCricketsFormInput(c tele.Context, session *UserSess
 	var err error
 
 	switch session.CurrentField {
-	case FieldColonyID:
-		colonyID, err := strconv.Atoi(c.Text())
-		if err != nil {
-			return c.Send("Please enter a valid colony ID")
-		}
-		session.Colony.ID = colonyID
-		session.CurrentField = FieldColonyCount
-		err = c.Send("How many crickets are in the colony?")
 	case FieldColonyCount:
 		count, err := strconv.Atoi(c.Text())
 		if err != nil {
-			return c.Send("Please enter a valid number for the colony count")
+			return c.Send("Please enter a valid number for the cricket count")
 		}
-		session.Colony.CurrentCount = count
-		session.Colony.LastCountDate = time.Now()
-		err = t.db.UpdateColonyCount(t.ctx, int32(session.Colony.ID), int32(count), c.Sender().ID)
+
+		colonies, err := t.db.GetColonyStatus(t.ctx, c.Sender().ID)
 		if err != nil {
-			return fmt.Errorf("failed to update colony count: %w", err)
+			return fmt.Errorf("failed to get colony: %w", err)
+		}
+
+		if len(colonies) == 0 {
+
+			colony := models.CricketColony{
+				ColonyName:    "Cricket Colony",
+				CurrentCount:  count,
+				LastCountDate: time.Now(),
+				UserID:        c.Sender().ID,
+				Notes:         "Initial setup",
+			}
+			err = t.db.AddColony(context.Background(), colony)
+			if err != nil {
+				return fmt.Errorf("failed to create colony: %w", err)
+			}
+		} else {
+
+			colonyID := colonies[0].ID
+			err = t.db.UpdateColonyCount(t.ctx, colonyID, int32(count), c.Sender().ID)
+			if err != nil {
+				return fmt.Errorf("failed to update colony count: %w", err)
+			}
 		}
 
 		session.reset()
-		err = sendSuccess(c, "Colony count updated!")
+		err = sendSuccess(c, fmt.Sprintf("Cricket count updated to %d!", count))
 	}
 
 	return err

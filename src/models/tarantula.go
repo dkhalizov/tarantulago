@@ -1,8 +1,9 @@
 package models
 
 import (
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type CricketSizeType struct {
@@ -101,6 +102,11 @@ type Tarantula struct {
 	UserID                int64      `json:"user_id" gorm:"index"`
 	EnclosureID           *int       `json:"enclosure_id"`
 	CurrentSize           float64    `json:"current_size"`
+
+	// New fields for enhanced tracking
+	ProfilePhotoURL    string     `json:"profile_photo_url"`
+	CurrentWeightGrams *float64   `json:"current_weight_grams"`
+	LastWeighDate      *time.Time `json:"last_weigh_date"`
 
 	Species             TarantulaSpecies `json:"species" gorm:"foreignKey:SpeciesID"`
 	CurrentMoltStage    MoltStage        `json:"current_molt_stage" gorm:"foreignKey:CurrentMoltStageID"`
@@ -258,6 +264,12 @@ type UserSettings struct {
 	CleaningFrequencyDays      int       `json:"cleaning_frequency_days" gorm:"default:14"`
 	AdultRemovalFrequencyDays  int       `json:"adult_removal_frequency_days" gorm:"default:7"`
 
+	// New pause notification feature
+	NotificationsPaused bool       `json:"notifications_paused" gorm:"default:false"`
+	PauseStartDate      *time.Time `json:"pause_start_date"`
+	PauseEndDate        *time.Time `json:"pause_end_date"`
+	PauseReason         string     `json:"pause_reason" gorm:"type:varchar(255)"`
+
 	User TelegramUser `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
 }
 
@@ -331,4 +343,124 @@ type ColonyMaintenanceAlert struct {
 
 func (ColonyMaintenanceAlert) TableName() string {
 	return "spider_bot.colony_maintenance_alerts"
+}
+
+// New model for weight tracking
+type WeightRecord struct {
+	ID          int       `json:"id" gorm:"primaryKey"`
+	TarantulaID int       `json:"tarantula_id" gorm:"index"`
+	WeightGrams float64   `json:"weight_grams" gorm:"not null"`
+	WeighDate   time.Time `json:"weigh_date" gorm:"index;not null"`
+	Notes       string    `json:"notes"`
+	UserID      int64     `json:"user_id" gorm:"index"`
+	CreatedAt   time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+
+	Tarantula Tarantula    `json:"tarantula" gorm:"foreignKey:TarantulaID"`
+	User      TelegramUser `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
+}
+
+// New model for photos
+type TarantulaPhoto struct {
+	ID          int       `json:"id" gorm:"primaryKey"`
+	TarantulaID int       `json:"tarantula_id" gorm:"index"`
+	PhotoURL    string    `json:"photo_url" gorm:"not null"`
+	PhotoType   string    `json:"photo_type" gorm:"default:'general'"` // general, pre-molt, post-molt
+	Caption     string    `json:"caption"`
+	TakenDate   time.Time `json:"taken_date" gorm:"index;not null"`
+	UserID      int64     `json:"user_id" gorm:"index"`
+	CreatedAt   time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+
+	Tarantula Tarantula    `json:"tarantula" gorm:"foreignKey:TarantulaID"`
+	User      TelegramUser `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
+}
+
+// Analytics and reporting models
+type FeedingPattern struct {
+	TarantulaID          int32      `json:"tarantula_id"`
+	TarantulaName        string     `json:"tarantula_name"`
+	TotalFeedings        int32      `json:"total_feedings"`
+	AverageInterval      float64    `json:"average_interval_days"`
+	AcceptanceRate       float64    `json:"acceptance_rate_percent"`
+	LastFeedingDate      *time.Time `json:"last_feeding_date"`
+	DaysSinceLastFeeding int32      `json:"days_since_last_feeding"`
+	FeedingRegularity    string     `json:"feeding_regularity"` // "Regular", "Irregular", "Inconsistent"
+	CricketsPerWeek      float64    `json:"crickets_per_week"`
+}
+
+type GrowthData struct {
+	TarantulaID       int32         `json:"tarantula_id"`
+	TarantulaName     string        `json:"tarantula_name"`
+	CurrentWeight     *float64      `json:"current_weight_grams"`
+	CurrentSize       float64       `json:"current_size_cm"`
+	WeightHistory     []WeightPoint `json:"weight_history"`
+	SizeHistory       []SizePoint   `json:"size_history"`
+	GrowthRate        *float64      `json:"growth_rate_grams_per_month"`
+	WeightChangeTotal float64       `json:"total_weight_change"`
+	SizeChangeTotal   float64       `json:"total_size_change"`
+}
+
+type WeightPoint struct {
+	Date   time.Time `json:"date"`
+	Weight float64   `json:"weight_grams"`
+}
+
+type SizePoint struct {
+	Date time.Time `json:"date"`
+	Size float64   `json:"size_cm"`
+}
+
+type AnnualReport struct {
+	Year          int    `json:"year"`
+	TarantulaID   int32  `json:"tarantula_id"`
+	TarantulaName string `json:"tarantula_name"`
+
+	// Feeding statistics
+	TotalFeedings   int32   `json:"total_feedings"`
+	TotalCrickets   int32   `json:"total_crickets_consumed"`
+	AcceptanceRate  float64 `json:"acceptance_rate"`
+	AverageInterval float64 `json:"average_feeding_interval"`
+
+	// Growth statistics
+	StartWeight *float64 `json:"start_weight_grams"`
+	EndWeight   *float64 `json:"end_weight_grams"`
+	WeightGain  *float64 `json:"weight_gain_grams"`
+	StartSize   float64  `json:"start_size_cm"`
+	EndSize     float64  `json:"end_size_cm"`
+	SizeGrowth  float64  `json:"size_growth_cm"`
+
+	// Health and events
+	MoltCount    int32 `json:"molt_count"`
+	PhotosAdded  int32 `json:"photos_added"`
+	HealthIssues int32 `json:"health_issues"`
+
+	// Milestones
+	Milestones []string `json:"milestones"`
+
+	// Cost estimates
+	EstimatedCost float64 `json:"estimated_cricket_cost"`
+}
+
+type MoltPrediction struct {
+	TarantulaID   int32  `json:"tarantula_id"`
+	TarantulaName string `json:"tarantula_name"`
+
+	// Historical data
+	LastMoltDate      *time.Time `json:"last_molt_date"`
+	DaysSinceLastMolt int32      `json:"days_since_last_molt"`
+	AverageMoltCycle  *float64   `json:"average_molt_cycle_days"`
+	MoltCount         int32      `json:"total_molts"`
+
+	// Prediction
+	PredictedMoltDate *time.Time `json:"predicted_molt_date"`
+	ConfidenceLevel   string     `json:"confidence_level"` // "High", "Medium", "Low"
+	DaysUntilMolt     *int32     `json:"days_until_predicted_molt"`
+
+	// Indicators
+	PreMoltSigns    []string `json:"pre_molt_signs"`
+	SizeIndicator   string   `json:"size_indicator"`   // "Small", "Medium", "Large", "Adult"
+	FeedingBehavior string   `json:"feeding_behavior"` // "Normal", "Reduced", "Stopped"
+
+	// Reasoning
+	PredictionBasis string `json:"prediction_basis"`
+	Recommendation  string `json:"recommendation"`
 }
