@@ -172,12 +172,17 @@ CREATE TABLE IF NOT EXISTS spider_bot.tarantula_photos (
     id SERIAL PRIMARY KEY,
     tarantula_id INTEGER NOT NULL REFERENCES spider_bot.tarantulas(id) ON DELETE CASCADE,
     photo_url VARCHAR(255) NOT NULL,
+    photo_data BYTEA,
     photo_type VARCHAR(50) DEFAULT 'general',
     caption TEXT,
     taken_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     user_id BIGINT NOT NULL REFERENCES spider_bot.telegram_users(telegram_id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Ensure new binary column exists for already-created databases
+ALTER TABLE spider_bot.tarantula_photos
+    ADD COLUMN IF NOT EXISTS photo_data BYTEA;
 
 CREATE INDEX IF NOT EXISTS idx_tarantula_photos_tarantula ON spider_bot.tarantula_photos(tarantula_id);
 CREATE INDEX IF NOT EXISTS idx_tarantula_photos_date ON spider_bot.tarantula_photos(taken_date);

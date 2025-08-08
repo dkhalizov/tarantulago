@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -295,6 +296,21 @@ func (t *TarantulaBot) handleViewPhotos(c tele.Context, tarantulaID int32) error
 
 	if len(photos) == 0 {
 		return c.Send(fmt.Sprintf("🖼️ No photos found for %s. Add some photos to track their growth!", tarantula.Name))
+	}
+
+	var media tele.Album
+	for _, p := range photos {
+		if len(p.PhotoData) > 0 {
+			photo := tele.Photo{File: tele.FromReader(bytes.NewReader(p.PhotoData)), Caption: p.Caption}
+			media = append(media, &photo)
+		} else if p.PhotoURL != "" {
+			photo := tele.Photo{File: tele.File{FileID: p.PhotoURL}, Caption: p.Caption}
+			media = append(media, &photo)
+		}
+	}
+
+	if len(media) > 0 {
+		return c.SendAlbum(media)
 	}
 
 	msg := fmt.Sprintf("🖼️ *Recent Photos of %s*\n\n", tarantula.Name)

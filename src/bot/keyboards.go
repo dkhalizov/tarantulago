@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -1002,23 +1003,33 @@ func (t *TarantulaBot) handlePhotoInput(c tele.Context, session *UserSession) er
 		return c.Send("Please send a photo")
 	}
 
-	// Get the largest photo size
 	photo := c.Message().Photo
 	photoFile := photo.File
 
-	// In a real implementation, you'd save the photo to cloud storage
-	// For now, we'll use the file_id as the URL
+	// Keep FileID as reference
 	photoURL := photoFile.FileID
+
+	// Try downloading the binary photo data from Telegram
+	buf, err := t.bot.File(&photoFile)
+	if err != nil {
+		return fmt.Errorf("failed to download photo: %w", err)
+	}
+
+	photoBytes, err := io.ReadAll(buf)
+	if err != nil {
+		return fmt.Errorf("failed to read photo data: %w", err)
+	}
 
 	photoRecord := models.TarantulaPhoto{
 		TarantulaID: session.TarantulaData.ID,
 		PhotoURL:    photoURL,
+		PhotoData:   photoBytes,
 		PhotoType:   "general",
-		Caption:     "Photo uploaded via bot",
+		Caption:     c.Message().Caption,
 		UserID:      c.Sender().ID,
 	}
 
-	_, err := t.db.AddPhoto(t.ctx, photoRecord)
+	_, err = t.db.AddPhoto(t.ctx, photoRecord)
 	if err != nil {
 		return fmt.Errorf("failed to save photo: %w", err)
 	}

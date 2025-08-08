@@ -364,6 +364,7 @@ type TarantulaPhoto struct {
 	ID          int       `json:"id" gorm:"primaryKey"`
 	TarantulaID int       `json:"tarantula_id" gorm:"index"`
 	PhotoURL    string    `json:"photo_url" gorm:"not null"`
+	PhotoData   []byte    `json:"photo_data" gorm:"type:bytea"`
 	PhotoType   string    `json:"photo_type" gorm:"default:'general'"` // general, pre-molt, post-molt
 	Caption     string    `json:"caption"`
 	TakenDate   time.Time `json:"taken_date" gorm:"index;not null"`
