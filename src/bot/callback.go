@@ -77,6 +77,14 @@ func (t *TarantulaBot) setupInlineKeyboards() {
 			return t.handleSetNotificationTime(c)
 		case "set_feeding_reminder":
 			return t.handleSetFeedingReminder(c)
+		case "toggle_molt_predictions":
+			return t.handleToggleMoltPredictions(c)
+		case "set_molt_prediction_days":
+			return t.handleSetMoltPredictionDays(c)
+		case "set_post_molt_mute_days":
+			return t.handleSetPostMoltMuteDays(c)
+		case "toggle_notifications":
+			return t.handleToggleNotifications(c)
 		case "pause_1_day":
 			return t.handlePauseNotifications(c, 24*time.Hour)
 		case "pause_3_days":
