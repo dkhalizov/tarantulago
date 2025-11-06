@@ -77,4 +77,5 @@ type NotificationOperations interface {
 	GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error)
 	GetActiveUsers(ctx context.Context) ([]models.TelegramUser, error)
 	GetColonyMaintenanceAlerts(ctx context.Context, userID int64) ([]models.ColonyMaintenanceAlert, error)
+	GetUpcomingMoltPredictions(ctx context.Context, userID int64, withinDays int) ([]models.MoltPrediction, error)
 }

@@ -673,10 +673,34 @@ func (t *TarantulaBot) handleNotificationSettings(c tele.Context) error {
 		Data: "set_feeding_reminder",
 	}
 
+	// Molt prediction settings
+	moltPredictionToggleText := "🔕 Disable Molt Predictions"
+	if !settings.MoltPredictionEnabled {
+		moltPredictionToggleText = "🔔 Enable Molt Predictions"
+	}
+
+	moltPredictionToggleBtn := tele.InlineButton{
+		Text: moltPredictionToggleText,
+		Data: "toggle_molt_predictions",
+	}
+
+	moltPredictionDaysBtn := tele.InlineButton{
+		Text: fmt.Sprintf("🦗 Molt Alert Days: %d days before", settings.MoltPredictionDays),
+		Data: "set_molt_prediction_days",
+	}
+
+	postMoltMuteBtn := tele.InlineButton{
+		Text: fmt.Sprintf("🤫 Post-Molt Mute: %d days", settings.PostMoltMuteDays),
+		Data: "set_post_molt_mute_days",
+	}
+
 	markup.InlineKeyboard = [][]tele.InlineButton{
 		{toggleBtn},
 		{timeBtn},
 		{reminderBtn},
+		{moltPredictionToggleBtn},
+		{moltPredictionDaysBtn},
+		{postMoltMuteBtn},
 	}
 
 	return c.Send("🔔 Notification Settings:", markup)
@@ -754,6 +778,60 @@ func (t *TarantulaBot) handleSetFeedingReminder(c tele.Context) error {
 	return c.Send("How many days before feeding would you like to be reminded?")
 }
 
+func (t *TarantulaBot) handleToggleNotifications(c tele.Context) error {
+	settings, err := t.db.GetUserSettings(t.ctx, c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get user settings: %w", err)
+	}
+
+	settings.NotificationEnabled = !settings.NotificationEnabled
+	err = t.db.UpdateUserSettings(t.ctx, settings)
+	if err != nil {
+		return fmt.Errorf("failed to update user settings: %w", err)
+	}
+
+	status := "enabled"
+	if !settings.NotificationEnabled {
+		status = "disabled"
+	}
+	return c.Send(fmt.Sprintf("✅ Notifications %s!", status))
+}
+
+func (t *TarantulaBot) handleToggleMoltPredictions(c tele.Context) error {
+	settings, err := t.db.GetUserSettings(t.ctx, c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get user settings: %w", err)
+	}
+
+	settings.MoltPredictionEnabled = !settings.MoltPredictionEnabled
+	err = t.db.UpdateUserSettings(t.ctx, settings)
+	if err != nil {
+		return fmt.Errorf("failed to update user settings: %w", err)
+	}
+
+	status := "enabled"
+	if !settings.MoltPredictionEnabled {
+		status = "disabled"
+	}
+	return c.Send(fmt.Sprintf("✅ Molt prediction notifications %s!", status))
+}
+
+func (t *TarantulaBot) handleSetMoltPredictionDays(c tele.Context) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.CurrentField = "molt_prediction_days"
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("How many days before a predicted molt should you be notified?")
+}
+
+func (t *TarantulaBot) handleSetPostMoltMuteDays(c tele.Context) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.CurrentField = "post_molt_mute_days"
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("How many days after a molt should feeding notifications be muted?")
+}
+
 func (t *TarantulaBot) handleSettingsInput(c tele.Context, session *UserSession) error {
 	settings, err := t.db.GetUserSettings(t.ctx, c.Sender().ID)
 	if err != nil {
@@ -773,6 +851,20 @@ func (t *TarantulaBot) handleSettingsInput(c tele.Context, session *UserSession)
 			return c.Send("Please enter a valid number of days (greater than 0)")
 		}
 		settings.FeedingReminderDays = days
+
+	case "molt_prediction_days":
+		days, err := strconv.Atoi(c.Text())
+		if err != nil || days <= 0 {
+			return c.Send("Please enter a valid number of days (greater than 0)")
+		}
+		settings.MoltPredictionDays = days
+
+	case "post_molt_mute_days":
+		days, err := strconv.Atoi(c.Text())
+		if err != nil || days < 0 {
+			return c.Send("Please enter a valid number of days (0 or greater)")
+		}
+		settings.PostMoltMuteDays = days
 	}
 
 	err = t.db.UpdateUserSettings(t.ctx, settings)

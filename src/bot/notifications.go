@@ -99,7 +99,8 @@ func (n *NotificationSystem) processScheduledNotifications() {
 
 func (n *NotificationSystem) triggerChecks(user models.TelegramUser, settings *models.UserSettings) {
 	n.checkFeedings(user.TelegramID, user.ChatID, settings)
-
+	n.checkMoltPredictions(user.TelegramID, user.ChatID, settings)
+	n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
 }
 
 func (n *NotificationSystem) checkFeedings(userID int64, chatID int64, settings *models.UserSettings) {
@@ -166,6 +167,55 @@ func (n *NotificationSystem) checkColonies(userID int64, chatID int64, settings 
 				slog.Error("Error sending colony notification", "user_id", userID, "error", err)
 			}
 		}
+	}
+}
+
+func (n *NotificationSystem) checkMoltPredictions(userID int64, chatID int64, settings *models.UserSettings) {
+	if !settings.MoltPredictionEnabled {
+		return
+	}
+
+	predictions, err := n.db.GetUpcomingMoltPredictions(n.ctx, userID, settings.MoltPredictionDays)
+	if err != nil {
+		slog.Error("Error checking molt predictions", "user_id", userID, "error", err)
+		return
+	}
+
+	if len(predictions) == 0 {
+		return
+	}
+
+	message := "🦗 *Upcoming Molt Predictions*\n\n"
+	message += "The following tarantulas are predicted to molt soon:\n\n"
+
+	for _, pred := range predictions {
+		daysUntil := ""
+		if pred.DaysUntilMolt != nil {
+			if *pred.DaysUntilMolt == 1 {
+				daysUntil = "tomorrow"
+			} else {
+				daysUntil = fmt.Sprintf("in %d days", *pred.DaysUntilMolt)
+			}
+		}
+
+		message += fmt.Sprintf("🕷 *%s*\n", pred.TarantulaName)
+		message += fmt.Sprintf("  • Predicted molt: %s\n", daysUntil)
+		message += fmt.Sprintf("  • Confidence: %s\n", pred.ConfidenceLevel)
+
+		if len(pred.PreMoltSigns) > 0 {
+			message += fmt.Sprintf("  • Signs: %s\n", pred.PreMoltSigns[0])
+		}
+
+		if pred.Recommendation != "" {
+			message += fmt.Sprintf("  • %s\n", pred.Recommendation)
+		}
+		message += "\n"
+	}
+
+	message += "_Tip: Stop feeding and ensure water is available when molt is imminent._"
+
+	if _, err = n.bot.Send(&tele.Chat{ID: chatID}, message, tele.ModeMarkdown); err != nil {
+		slog.Error("Error sending molt prediction notification", "user_id", userID, "error", err)
 	}
 }
 

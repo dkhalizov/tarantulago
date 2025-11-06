@@ -107,6 +107,7 @@ type Tarantula struct {
 	ProfilePhotoURL    string     `json:"profile_photo_url"`
 	CurrentWeightGrams *float64   `json:"current_weight_grams"`
 	LastWeighDate      *time.Time `json:"last_weigh_date"`
+	PostMoltMuteUntil  *time.Time `json:"post_molt_mute_until"` // Feeding notifications suppressed until this date
 
 	Species             TarantulaSpecies `json:"species" gorm:"foreignKey:SpeciesID"`
 	CurrentMoltStage    MoltStage        `json:"current_molt_stage" gorm:"foreignKey:CurrentMoltStageID"`
@@ -269,6 +270,11 @@ type UserSettings struct {
 	PauseStartDate      *time.Time `json:"pause_start_date"`
 	PauseEndDate        *time.Time `json:"pause_end_date"`
 	PauseReason         string     `json:"pause_reason" gorm:"type:varchar(255)"`
+
+	// Molt notification settings
+	MoltPredictionEnabled bool `json:"molt_prediction_enabled" gorm:"default:true"`
+	MoltPredictionDays    int  `json:"molt_prediction_days" gorm:"default:5"`
+	PostMoltMuteDays      int  `json:"post_molt_mute_days" gorm:"default:7"`
 
 	User TelegramUser `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
 }

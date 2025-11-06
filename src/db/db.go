@@ -222,6 +222,7 @@ FROM spider_bot.tarantulas t
          LEFT JOIN MatchingSchedule ms ON t.id = ms.tarantula_id
 WHERE t.user_id = ?
   AND (molt.stage_name IS NULL OR molt.stage_name != 'Pre-molt')
+  AND (t.post_molt_mute_until IS NULL OR t.post_molt_mute_until < CURRENT_TIMESTAMP)
   AND (
     lf.days_since_feeding IS NULL
         OR lf.days_since_feeding > ms.min_days
@@ -454,12 +455,22 @@ func (db *TarantulaDB) GetHealthAlerts(ctx context.Context, userID int64) ([]mod
 
 func (db *TarantulaDB) RecordMolt(ctx context.Context, molt models.MoltRecord) error {
 	return db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Get user settings to determine post-molt mute duration
+		var settings models.UserSettings
+		if err := tx.Where("user_id = ?", molt.UserID).First(&settings).Error; err != nil {
+			// If settings not found, use default
+			settings = models.UserSettings{PostMoltMuteDays: 7}
+		}
+
+		// Calculate post-molt mute period
+		muteUntil := time.Now().AddDate(0, 0, settings.PostMoltMuteDays)
 
 		result := tx.Model(&models.Tarantula{}).
 			Where("id = ? AND user_id = ?", molt.TarantulaID, molt.UserID).
 			Updates(map[string]interface{}{
 				"last_molt_date":        time.Now(),
 				"current_molt_stage_id": models.MoltStagePostMolt,
+				"post_molt_mute_until":  muteUntil,
 			})
 
 		if result.Error != nil {
@@ -1493,6 +1504,35 @@ func (db *TarantulaDB) GetMoltPredictions(ctx context.Context, userID int64) ([]
 	}
 
 	return predictions, nil
+}
+
+// GetUpcomingMoltPredictions returns molt predictions that are predicted within the specified number of days
+// Only returns predictions with High or Medium confidence
+func (db *TarantulaDB) GetUpcomingMoltPredictions(ctx context.Context, userID int64, withinDays int) ([]models.MoltPrediction, error) {
+	allPredictions, err := db.GetMoltPredictions(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var upcomingPredictions []models.MoltPrediction
+	for _, pred := range allPredictions {
+		// Only include predictions with sufficient confidence
+		if pred.ConfidenceLevel != "High" && pred.ConfidenceLevel != "Medium" {
+			continue
+		}
+
+		// Only include if we have a prediction date and days until molt
+		if pred.DaysUntilMolt == nil || pred.PredictedMoltDate == nil {
+			continue
+		}
+
+		// Check if molt is predicted within the specified timeframe
+		if *pred.DaysUntilMolt > 0 && *pred.DaysUntilMolt <= int32(withinDays) {
+			upcomingPredictions = append(upcomingPredictions, pred)
+		}
+	}
+
+	return upcomingPredictions, nil
 }
 
 // Simplified method aliases for backward compatibility
