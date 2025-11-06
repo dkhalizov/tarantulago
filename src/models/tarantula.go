@@ -117,15 +117,14 @@ type Tarantula struct {
 }
 
 type FeedingSchedule struct {
-	ID               int     `json:"id" gorm:"primaryKey"`
-	SpeciesID        int     `json:"species_id"`
-	SizeCategory     string  `json:"size_category"`
-	BodyLengthCM     float64 `json:"body_length_cm"`
-	PreySize         string  `json:"prey_size"`
-	FeedingFrequency string  `json:"feeding_frequency"`
-	PreyType         string  `json:"prey_type"`
-	Notes            string  `json:"notes"`
-	FrequencyID      int     `json:"frequency_id"`
+	ID           int     `json:"id" gorm:"primaryKey"`
+	SpeciesID    int     `json:"species_id"`
+	SizeCategory string  `json:"size_category"`
+	BodyLengthCM float64 `json:"body_length_cm"`
+	PreySize     string  `json:"prey_size"`
+	PreyType     string  `json:"prey_type"`
+	Notes        string  `json:"notes"`
+	FrequencyID  int     `json:"frequency_id"`
 
 	Species   TarantulaSpecies `json:"species" gorm:"foreignKey:SpeciesID"`
 	Frequency FeedingFrequency `json:"frequency" gorm:"foreignKey:FrequencyID"`

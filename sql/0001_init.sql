@@ -116,15 +116,14 @@ CREATE INDEX idx_tarantulas_user_id ON tarantulas (user_id);
 
 CREATE TABLE feeding_schedules
 (
-    id                SERIAL PRIMARY KEY,
-    species_id        INTEGER REFERENCES tarantula_species (id),
-    size_category     TEXT,
-    body_length_cm    DOUBLE PRECISION,
-    prey_size         TEXT,
-    feeding_frequency TEXT,
-    prey_type         TEXT,
-    notes             TEXT,
-    frequency_id      INTEGER REFERENCES feeding_frequencies (id)
+    id             SERIAL PRIMARY KEY,
+    species_id     INTEGER REFERENCES tarantula_species (id),
+    size_category  TEXT,
+    body_length_cm DOUBLE PRECISION,
+    prey_size      TEXT,
+    prey_type      TEXT,
+    notes          TEXT,
+    frequency_id   INTEGER REFERENCES feeding_frequencies (id)
 );
 
 CREATE TABLE feeding_events
