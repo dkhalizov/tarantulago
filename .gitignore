@@ -1,1 +1,17 @@
 .idea
+
+# Build artifacts
+tarantulago
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test and coverage files
+*.test
+*.out
+coverage.out
+
+# Environment files
+.env
+.env.local
