@@ -108,12 +108,14 @@ type Tarantula struct {
 	CurrentWeightGrams *float64   `json:"current_weight_grams"`
 	LastWeighDate      *time.Time `json:"last_weigh_date"`
 	PostMoltMuteUntil  *time.Time `json:"post_molt_mute_until"` // Feeding notifications suppressed until this date
+	ColonyID           *int       `json:"colony_id" gorm:"index"`
 
 	Species             TarantulaSpecies `json:"species" gorm:"foreignKey:SpeciesID"`
 	CurrentMoltStage    MoltStage        `json:"current_molt_stage" gorm:"foreignKey:CurrentMoltStageID"`
 	CurrentHealthStatus HealthStatus     `json:"current_health_status" gorm:"foreignKey:CurrentHealthStatusID"`
 	User                TelegramUser     `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
 	Enclosure           Enclosure        `json:"enclosure" gorm:"foreignKey:EnclosureID"`
+	Colony              *TarantulaColony `json:"colony,omitempty" gorm:"foreignKey:ColonyID"`
 }
 
 type FeedingSchedule struct {
@@ -470,4 +472,40 @@ type MoltPrediction struct {
 	// Reasoning
 	PredictionBasis string `json:"prediction_basis"`
 	Recommendation  string `json:"recommendation"`
+}
+
+// TarantulaColony represents a group of communal tarantulas
+type TarantulaColony struct {
+	ID            int                       `json:"id" gorm:"primaryKey"`
+	ColonyName    string                    `json:"colony_name" gorm:"not null"`
+	SpeciesID     int                       `json:"species_id" gorm:"index;not null"`
+	FormationDate time.Time                 `json:"formation_date" gorm:"not null"`
+	EnclosureID   *int                      `json:"enclosure_id" gorm:"index"`
+	Notes         string                    `json:"notes"`
+	UserID        int64                     `json:"user_id" gorm:"index;not null"`
+	CreatedAt     time.Time                 `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt     time.Time                 `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+
+	Species   TarantulaSpecies         `json:"species" gorm:"foreignKey:SpeciesID"`
+	Enclosure *Enclosure               `json:"enclosure,omitempty" gorm:"foreignKey:EnclosureID"`
+	User      TelegramUser             `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
+	Members   []TarantulaColonyMember  `json:"members,omitempty" gorm:"foreignKey:ColonyID"`
+}
+
+// TarantulaColonyMember represents membership of a tarantula in a colony
+type TarantulaColonyMember struct {
+	ID          int        `json:"id" gorm:"primaryKey"`
+	ColonyID    int        `json:"colony_id" gorm:"index;not null"`
+	TarantulaID int        `json:"tarantula_id" gorm:"index;not null"`
+	JoinedDate  time.Time  `json:"joined_date" gorm:"not null"`
+	LeftDate    *time.Time `json:"left_date"`
+	IsActive    bool       `json:"is_active" gorm:"default:true;index"`
+	Notes       string     `json:"notes"`
+	UserID      int64      `json:"user_id" gorm:"index;not null"`
+	CreatedAt   time.Time  `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt   time.Time  `json:"updated_at" gorm:"default:CURRENT_TIMESTAMP"`
+
+	Colony    TarantulaColony `json:"colony" gorm:"foreignKey:ColonyID"`
+	Tarantula Tarantula       `json:"tarantula" gorm:"foreignKey:TarantulaID"`
+	User      TelegramUser    `json:"user" gorm:"foreignKey:UserID;references:TelegramID"`
 }
