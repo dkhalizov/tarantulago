@@ -182,6 +182,15 @@ func (t *TarantulaBot) setupInlineKeyboards() {
 			return t.handleTarantulaSelectedForColony(c, int32(tarantulaID))
 		}
 
+		if strings.HasPrefix(callbackData, "feed_colony:") {
+			colonyIDStr := strings.TrimPrefix(callbackData, "feed_colony:")
+			colonyID, err := strconv.Atoi(colonyIDStr)
+			if err != nil {
+				return c.Send("Invalid colony ID")
+			}
+			return t.handleFeedColony(c, int32(colonyID))
+		}
+
 		callback := parseCallback(callbackData)
 		switch callback.Action {
 		case selectCallback:

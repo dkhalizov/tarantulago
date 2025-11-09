@@ -1445,7 +1445,14 @@ func (t *TarantulaBot) handleColonyDetails(c tele.Context, colonyID int32) error
 		Text: "➕ Add Member",
 		Data: fmt.Sprintf("select_colony_for_add:%d", colony.ID),
 	}
-	markup.InlineKeyboard = [][]tele.InlineButton{{btnAddMember}}
+	btnFeedColony := tele.InlineButton{
+		Text: "🍽️ Feed Colony",
+		Data: fmt.Sprintf("feed_colony:%d", colony.ID),
+	}
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{btnFeedColony},
+		{btnAddMember},
+	}
 
 	return c.Send(msg, markup, tele.ModeMarkdown)
 }
@@ -1522,4 +1529,34 @@ func (t *TarantulaBot) handleTarantulaSelectedForColony(c tele.Context, tarantul
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
 	return sendSuccess(c, "Tarantula added to colony successfully!")
+}
+
+func (t *TarantulaBot) handleFeedColony(c tele.Context, colonyID int32) error {
+	// Get colony details
+	colony, err := t.db.GetColony(t.ctx, colonyID, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get colony: %v", err))
+	}
+
+	// Count active members
+	activeMembers := 0
+	for _, member := range colony.Members {
+		if member.IsActive {
+			activeMembers++
+		}
+	}
+
+	if activeMembers == 0 {
+		return SendInfo(c, "This colony has no members yet. Add some tarantulas first!")
+	}
+
+	// Prompt for number of crickets
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.CurrentState = StateFeeding
+	session.SelectedColonyID = int(colonyID)
+	session.CurrentField = FieldFeedingCount
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send(fmt.Sprintf("🍽️ Feeding colony: %s (%d members)\n\nHow many crickets are you offering?",
+		colony.ColonyName, activeMembers))
 }

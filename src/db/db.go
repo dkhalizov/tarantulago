@@ -1934,3 +1934,71 @@ func (db *TarantulaDB) UpdateColony(ctx context.Context, colony models.Tarantula
 	}
 	return nil
 }
+
+// GetColoniesDueFeeding returns colonies that need feeding based on their species schedule
+func (db *TarantulaDB) GetColoniesDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaColony, error) {
+	var colonies []models.TarantulaColony
+
+	// Get all user's colonies with species and member info
+	result := db.db.WithContext(ctx).
+		Preload("Species").
+		Preload("Members", "is_active = ?", true).
+		Preload("Members.Tarantula").
+		Where("user_id = ?", userID).
+		Find(&colonies)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colonies: %w", result.Error)
+	}
+
+	var dueColonies []models.TarantulaColony
+
+	for _, colony := range colonies {
+		// Skip colonies with no active members
+		if len(colony.Members) == 0 {
+			continue
+		}
+
+		// Get last colony feeding
+		var lastFeeding models.FeedingEvent
+		err := db.db.WithContext(ctx).
+			Where("tarantula_colony_id = ?", colony.ID).
+			Order("feeding_date DESC").
+			First(&lastFeeding).Error
+
+		daysSinceFeeding := 999.0
+		if err == nil {
+			daysSinceFeeding = time.Since(lastFeeding.FeedingDate).Hours() / 24
+		}
+
+		// Get feeding schedule for this species
+		// Use average size for colony members
+		var avgSize float64
+		for _, member := range colony.Members {
+			if member.Tarantula.CurrentSize > 0 {
+				avgSize += member.Tarantula.CurrentSize
+			}
+		}
+		if len(colony.Members) > 0 {
+			avgSize /= float64(len(colony.Members))
+		}
+
+		var schedule models.FeedingSchedule
+		err = db.db.WithContext(ctx).
+			Where("species_id = ? AND body_length_cm >= ?", colony.SpeciesID, avgSize).
+			Order("body_length_cm ASC").
+			First(&schedule).Error
+
+		if err == nil && schedule.FrequencyID > 0 {
+			var frequency models.FeedingFrequency
+			if err = db.db.First(&frequency, schedule.FrequencyID).Error; err == nil {
+				// Check if colony is due
+				if daysSinceFeeding >= float64(frequency.MinDays) {
+					dueColonies = append(dueColonies, colony)
+				}
+			}
+		}
+	}
+
+	return dueColonies, nil
+}

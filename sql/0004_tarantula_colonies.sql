@@ -66,3 +66,13 @@ ALTER TABLE spider_bot.tarantulas
 CREATE INDEX IF NOT EXISTS idx_tarantulas_colony ON spider_bot.tarantulas(colony_id);
 
 COMMENT ON COLUMN spider_bot.tarantulas.colony_id IS 'Colony this tarantula belongs to (if any)';
+
+-- Add colony feeding support to feeding_events
+ALTER TABLE spider_bot.feeding_events
+    ADD COLUMN IF NOT EXISTS tarantula_colony_id INTEGER REFERENCES spider_bot.tarantula_colonies(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_feeding_events_tarantula_colony ON spider_bot.feeding_events(tarantula_colony_id);
+
+COMMENT ON COLUMN spider_bot.feeding_events.tarantula_colony_id IS 'If set, this feeding was for an entire colony rather than individual tarantula';
+
+-- Note: feeding_events will have EITHER tarantula_id OR tarantula_colony_id set, not both

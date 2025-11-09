@@ -318,13 +318,28 @@ func (t *TarantulaBot) handleFeedingFormInput(c tele.Context, session *UserSessi
 		session.FeedEvent.FeedingDate = time.Now()
 		session.FeedEvent.UserID = c.Sender().ID
 		session.FeedEvent.FeedingStatusID = int(models.FeedingStatusAccepted)
+
+		// Check if this is colony feeding or individual feeding
+		if session.SelectedColonyID > 0 {
+			colonyID := session.SelectedColonyID
+			session.FeedEvent.TarantulaColonyID = &colonyID
+			session.FeedEvent.TarantulaID = 0 // Not individual feeding
+		}
+
 		_, err = t.db.RecordFeeding(context.Background(), session.FeedEvent)
 		if err != nil {
 			return fmt.Errorf("failed to save feeding event: %w", err)
 		}
 
+		// Check if it was colony feeding before reset
+		isColonyFeeding := session.FeedEvent.TarantulaColonyID != nil
 		session.reset()
-		err = sendSuccess(c, "Feeding event recorded!")
+
+		if isColonyFeeding {
+			err = sendSuccess(c, "Colony feeding recorded!")
+		} else {
+			err = sendSuccess(c, "Feeding event recorded!")
+		}
 	}
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
