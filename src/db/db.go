@@ -102,9 +102,19 @@ func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEv
 	var id int64
 	err := db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 
-		var tarantula models.Tarantula
-		if err := tx.Where("id = ? AND user_id = ?", event.TarantulaID, event.UserID).First(&tarantula).Error; err != nil {
-			return fmt.Errorf("tarantula not found or access denied: %w", err)
+		// Validate either individual tarantula or colony (but not both)
+		if event.TarantulaColonyID != nil && *event.TarantulaColonyID > 0 {
+			// Colony feeding - validate colony exists
+			var tarantulaColony models.TarantulaColony
+			if err := tx.Where("id = ? AND user_id = ?", *event.TarantulaColonyID, event.UserID).First(&tarantulaColony).Error; err != nil {
+				return fmt.Errorf("tarantula colony not found or access denied: %w", err)
+			}
+		} else {
+			// Individual feeding - validate tarantula exists
+			var tarantula models.Tarantula
+			if err := tx.Where("id = ? AND user_id = ?", event.TarantulaID, event.UserID).First(&tarantula).Error; err != nil {
+				return fmt.Errorf("tarantula not found or access denied: %w", err)
+			}
 		}
 
 		var colony models.CricketColony
@@ -127,13 +137,14 @@ func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEv
 		}
 
 		feedingEvent := models.FeedingEvent{
-			TarantulaID:      event.TarantulaID,
-			FeedingDate:      time.Now(),
-			CricketColonyID:  colony.ID,
-			NumberOfCrickets: event.NumberOfCrickets,
-			FeedingStatusID:  int(models.FeedingStatusAccepted),
-			Notes:            event.Notes,
-			UserID:           event.UserID,
+			TarantulaID:       event.TarantulaID,
+			TarantulaColonyID: event.TarantulaColonyID,
+			FeedingDate:       time.Now(),
+			CricketColonyID:   colony.ID,
+			NumberOfCrickets:  event.NumberOfCrickets,
+			FeedingStatusID:   int(models.FeedingStatusAccepted),
+			Notes:             event.Notes,
+			UserID:            event.UserID,
 		}
 
 		if err := tx.Create(&feedingEvent).Error; err != nil {
