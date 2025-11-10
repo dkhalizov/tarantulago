@@ -109,12 +109,14 @@ func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEv
 			if err := tx.Where("id = ? AND user_id = ?", *event.TarantulaColonyID, event.UserID).First(&tarantulaColony).Error; err != nil {
 				return fmt.Errorf("tarantula colony not found or access denied: %w", err)
 			}
-		} else {
+		} else if event.TarantulaID != nil && *event.TarantulaID > 0 {
 			// Individual feeding - validate tarantula exists
 			var tarantula models.Tarantula
-			if err := tx.Where("id = ? AND user_id = ?", event.TarantulaID, event.UserID).First(&tarantula).Error; err != nil {
+			if err := tx.Where("id = ? AND user_id = ?", *event.TarantulaID, event.UserID).First(&tarantula).Error; err != nil {
 				return fmt.Errorf("tarantula not found or access denied: %w", err)
 			}
+		} else {
+			return fmt.Errorf("feeding event must specify either a tarantula or a colony")
 		}
 
 		var colony models.CricketColony
@@ -1039,8 +1041,9 @@ func (db *TarantulaDB) QuickFeed(ctx context.Context, tarantulaID int32, userID 
 			return fmt.Errorf("no crickets available in colony")
 		}
 
+		tid := int(tarantulaID)
 		feedingEvent := models.FeedingEvent{
-			TarantulaID:      int(tarantulaID),
+			TarantulaID:      &tid,
 			FeedingDate:      time.Now(),
 			CricketColonyID:  colony.ID,
 			NumberOfCrickets: 1,

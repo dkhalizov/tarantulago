@@ -608,7 +608,8 @@ func (t *TarantulaBot) handleTarantulaFeed(c tele.Context, tarantulaID int) erro
 	session := t.sessions.GetSession(c.Sender().ID)
 	session.CurrentState = StateFeeding
 	session.CurrentField = FieldColonyID
-	session.FeedEvent.TarantulaID = tarantulaID
+	tid := tarantulaID
+	session.FeedEvent.TarantulaID = &tid
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
 	return c.Send("What's colony ID?")
