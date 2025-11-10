@@ -327,11 +327,15 @@ func (db *TarantulaDB) GetAllTarantulas(ctx context.Context, userID int64) ([]mo
         LEFT JOIN spider_bot.molt_stages ms ON t.current_molt_stage_id = ms.id
         LEFT JOIN spider_bot.health_statuses hs ON t.current_health_status_id = hs.id
         LEFT JOIN (
-            SELECT 
-                tarantula_id,
-                EXTRACT(EPOCH FROM CURRENT_DATE::timestamp - MAX(feeding_date)::timestamp)/86400 as days_since_feeding
-            FROM spider_bot.feeding_events 
-            GROUP BY tarantula_id
+            SELECT
+                t_sub.id as tarantula_id,
+                EXTRACT(EPOCH FROM CURRENT_DATE::timestamp - MAX(fe.feeding_date)::timestamp)/86400 as days_since_feeding
+            FROM spider_bot.tarantulas t_sub
+            LEFT JOIN spider_bot.feeding_events fe ON
+                fe.tarantula_id = t_sub.id OR
+                (fe.tarantula_colony_id = t_sub.colony_id AND t_sub.colony_id IS NOT NULL)
+            WHERE fe.id IS NOT NULL
+            GROUP BY t_sub.id
         ) last_feeding ON t.id = last_feeding.tarantula_id
         LEFT JOIN (
             SELECT DISTINCT ON (fs.species_id)
