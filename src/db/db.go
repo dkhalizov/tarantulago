@@ -287,6 +287,7 @@ func (db *TarantulaDB) GetRecentFeedingRecords(ctx context.Context, userID int64
 
 	result := db.db.WithContext(ctx).
 		Preload("Tarantula").
+		Preload("TarantulaColony").
 		Preload("CricketColony").
 		Preload("FeedingStatus").
 		Preload("User").

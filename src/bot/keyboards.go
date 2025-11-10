@@ -375,9 +375,17 @@ func (t *TarantulaBot) setupHandlers() {
 					status = "❌"
 				}
 
+				// Get the name - could be a tarantula or a colony
+				name := "Unknown"
+				if record.Tarantula != nil {
+					name = record.Tarantula.Name
+				} else if record.TarantulaColony != nil {
+					name = record.TarantulaColony.ColonyName
+				}
+
 				msg.WriteString(fmt.Sprintf("%s *%s* • %s • %s\n",
 					status,
-					record.Tarantula.Name,
+					name,
 					FormatDate(&record.FeedingDate),
 					FormatDaysAgo(&record.FeedingDate)))
 			}
@@ -447,7 +455,14 @@ func (t *TarantulaBot) setupHandlers() {
 
 			spiderFeedings := make(map[string][]models.FeedingEvent)
 			for _, feeding := range feedings {
-				spiderFeedings[feeding.Tarantula.Name] = append(spiderFeedings[feeding.Tarantula.Name], feeding)
+				// Get the name - could be a tarantula or a colony
+				name := "Unknown"
+				if feeding.Tarantula != nil {
+					name = feeding.Tarantula.Name
+				} else if feeding.TarantulaColony != nil {
+					name = feeding.TarantulaColony.ColonyName
+				}
+				spiderFeedings[name] = append(spiderFeedings[name], feeding)
 			}
 
 			for spiderName, records := range spiderFeedings {
