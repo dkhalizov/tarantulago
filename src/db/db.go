@@ -1065,6 +1065,48 @@ func (db *TarantulaDB) QuickFeed(ctx context.Context, tarantulaID int32, userID 
 	})
 }
 
+func (db *TarantulaDB) QuickFeedColony(ctx context.Context, tarantulaColonyID int32, userID int64) error {
+	return db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+
+		// Verify colony exists and belongs to user
+		var tarantulaColony models.TarantulaColony
+		if err := tx.Where("id = ? AND user_id = ?", tarantulaColonyID, userID).First(&tarantulaColony).Error; err != nil {
+			return fmt.Errorf("tarantula colony not found: %w", err)
+		}
+
+		var cricketColony models.CricketColony
+		if err := tx.Where("user_id = ?", userID).First(&cricketColony).Error; err != nil {
+			return fmt.Errorf("no cricket colony found: %w", err)
+		}
+
+		if cricketColony.CurrentCount < 1 {
+			return fmt.Errorf("no crickets available in colony")
+		}
+
+		cid := int(tarantulaColonyID)
+		feedingEvent := models.FeedingEvent{
+			TarantulaColonyID: &cid,
+			FeedingDate:       time.Now(),
+			CricketColonyID:   cricketColony.ID,
+			NumberOfCrickets:  1,
+			FeedingStatusID:   int(models.FeedingStatusAccepted),
+			Notes:             "Quick feed - colony",
+			UserID:            userID,
+		}
+
+		if err := tx.Create(&feedingEvent).Error; err != nil {
+			return fmt.Errorf("failed to create feeding event: %w", err)
+		}
+
+		if err := tx.Model(&cricketColony).
+			UpdateColumn("current_count", gorm.Expr("current_count - 1")).Error; err != nil {
+			return fmt.Errorf("failed to update cricket colony count: %w", err)
+		}
+
+		return nil
+	})
+}
+
 func (db *TarantulaDB) GetFeedingPatterns(ctx context.Context, userID int64) ([]models.FeedingPattern, error) {
 	var patterns []models.FeedingPattern
 
