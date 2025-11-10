@@ -191,6 +191,16 @@ func (t *TarantulaBot) setupInlineKeyboards() {
 			return t.handleFeedColony(c, int32(colonyID))
 		}
 
+		// Handle species selection during tarantula creation
+		if strings.HasPrefix(callbackData, "add_tarantula_species:") {
+			speciesIDStr := strings.TrimPrefix(callbackData, "add_tarantula_species:")
+			speciesID, err := strconv.Atoi(speciesIDStr)
+			if err != nil {
+				return c.Send("Invalid species ID")
+			}
+			return t.handleTarantulaSpeciesSelected(c, speciesID)
+		}
+
 		callback := parseCallback(callbackData)
 		switch callback.Action {
 		case selectCallback:

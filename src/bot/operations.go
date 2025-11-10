@@ -29,6 +29,7 @@ type TarantulaService interface {
 	GetTarantulaWithSpeciesData(ctx context.Context, tarantulaID int32, userID int64) (*models.Tarantula, error)
 	GetAllTarantulas(ctx context.Context, userID int64) ([]models.TarantulaListItem, error)
 	GetTarantulasDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaListItem, error)
+	GetAllSpecies(ctx context.Context) ([]models.TarantulaSpecies, error)
 	UpdateTarantulaEnclosure(ctx context.Context, tarantulaID, enclosureID, userID int64) error
 
 	RecordWeight(ctx context.Context, weight models.WeightRecord) (int64, error)

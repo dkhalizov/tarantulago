@@ -1401,6 +1401,12 @@ func (t *TarantulaBot) handleAddToColony(c tele.Context) error {
 
 func (t *TarantulaBot) handleColonySpeciesSelected(c tele.Context, speciesID int) error {
 	session := t.sessions.GetSession(c.Sender().ID)
+
+	// Verify we're in colony creation mode
+	if session.CurrentState != StateCreatingColony {
+		return SendError(c, "Invalid session state. Please start over by selecting 'Create Colony'.")
+	}
+
 	session.TarantulaColony.SpeciesID = speciesID
 	session.CurrentField = FieldFormationDate
 	t.sessions.UpdateSession(c.Sender().ID, session)
@@ -1529,6 +1535,20 @@ func (t *TarantulaBot) handleTarantulaSelectedForColony(c tele.Context, tarantul
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
 	return sendSuccess(c, "Tarantula added to colony successfully!")
+}
+
+func (t *TarantulaBot) handleTarantulaSpeciesSelected(c tele.Context, speciesID int) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+
+	if session.CurrentState != StateAddingTarantula || session.CurrentField != FieldSpecies {
+		return SendError(c, "Invalid session state. Please start over.")
+	}
+
+	session.TarantulaData.SpeciesID = speciesID
+	session.CurrentField = FieldAcquisitionDate
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("When did you acquire this tarantula? (YYYY-MM-DD)")
 }
 
 func (t *TarantulaBot) handleFeedColony(c tele.Context, colonyID int32) error {

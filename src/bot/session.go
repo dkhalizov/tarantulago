@@ -121,15 +121,45 @@ func (t *TarantulaBot) handleTarantulaFormInput(c tele.Context, session *UserSes
 	case FieldName:
 		session.TarantulaData.Name = c.Text()
 		session.CurrentField = FieldSpecies
-		err := c.Send("Great name! Now, what species is your tarantula? (Please enter the species ID)")
+		t.sessions.UpdateSession(c.Sender().ID, session)
+
+		// Show species selection buttons
+		species, err := t.db.GetAllSpecies(context.Background())
 		if err != nil {
-			return err
+			return c.Send("Failed to load species list. Please try again.")
 		}
 
+		msg := "Great name! Now, what species is your tarantula?"
+		markup := &tele.ReplyMarkup{}
+		var buttons [][]tele.InlineButton
+
+		// Show species in rows of 2
+		for i := 0; i < len(species); i += 2 {
+			var row []tele.InlineButton
+			btn1 := tele.InlineButton{
+				Text: species[i].CommonName,
+				Data: fmt.Sprintf("add_tarantula_species:%d", species[i].ID),
+			}
+			row = append(row, btn1)
+
+			if i+1 < len(species) {
+				btn2 := tele.InlineButton{
+					Text: species[i+1].CommonName,
+					Data: fmt.Sprintf("add_tarantula_species:%d", species[i+1].ID),
+				}
+				row = append(row, btn2)
+			}
+			buttons = append(buttons, row)
+		}
+
+		markup.InlineKeyboard = buttons
+		return c.Send(msg, markup)
+
 	case FieldSpecies:
+		// This case is now handled by callback, but keep for backward compatibility
 		speciesID, err := strconv.Atoi(c.Text())
 		if err != nil {
-			return c.Send("Please enter a valid species ID number")
+			return c.Send("Please use the buttons to select a species")
 		}
 		session.TarantulaData.SpeciesID = speciesID
 		session.CurrentField = FieldAcquisitionDate

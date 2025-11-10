@@ -89,6 +89,15 @@ func (db *TarantulaDB) AddTarantula(ctx context.Context, tarantula models.Tarant
 	return nil
 }
 
+func (db *TarantulaDB) GetAllSpecies(ctx context.Context) ([]models.TarantulaSpecies, error) {
+	var species []models.TarantulaSpecies
+	result := db.db.WithContext(ctx).Order("common_name ASC").Find(&species)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get species: %w", result.Error)
+	}
+	return species, nil
+}
+
 func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEvent) (int64, error) {
 	var id int64
 	err := db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
