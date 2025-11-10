@@ -145,6 +145,62 @@ func (t *TarantulaBot) setupInlineKeyboards() {
 			return t.showTarantulaList(c)
 		}
 
+		// Colony management callbacks
+		if strings.HasPrefix(callbackData, "colony_species:") {
+			speciesIDStr := strings.TrimPrefix(callbackData, "colony_species:")
+			speciesID, err := strconv.Atoi(speciesIDStr)
+			if err != nil {
+				return c.Send("Invalid species ID")
+			}
+			return t.handleColonySpeciesSelected(c, speciesID)
+		}
+
+		if strings.HasPrefix(callbackData, "colony_details:") {
+			colonyIDStr := strings.TrimPrefix(callbackData, "colony_details:")
+			colonyID, err := strconv.Atoi(colonyIDStr)
+			if err != nil {
+				return c.Send("Invalid colony ID")
+			}
+			return t.handleColonyDetails(c, int32(colonyID))
+		}
+
+		if strings.HasPrefix(callbackData, "select_colony_for_add:") {
+			colonyIDStr := strings.TrimPrefix(callbackData, "select_colony_for_add:")
+			colonyID, err := strconv.Atoi(colonyIDStr)
+			if err != nil {
+				return c.Send("Invalid colony ID")
+			}
+			return t.handleColonySelectedForAdd(c, int32(colonyID))
+		}
+
+		if strings.HasPrefix(callbackData, "add_tarantula_to_colony:") {
+			tarantulaIDStr := strings.TrimPrefix(callbackData, "add_tarantula_to_colony:")
+			tarantulaID, err := strconv.Atoi(tarantulaIDStr)
+			if err != nil {
+				return c.Send("Invalid tarantula ID")
+			}
+			return t.handleTarantulaSelectedForColony(c, int32(tarantulaID))
+		}
+
+		if strings.HasPrefix(callbackData, "feed_colony:") {
+			colonyIDStr := strings.TrimPrefix(callbackData, "feed_colony:")
+			colonyID, err := strconv.Atoi(colonyIDStr)
+			if err != nil {
+				return c.Send("Invalid colony ID")
+			}
+			return t.handleFeedColony(c, int32(colonyID))
+		}
+
+		// Handle species selection during tarantula creation
+		if strings.HasPrefix(callbackData, "add_tarantula_species:") {
+			speciesIDStr := strings.TrimPrefix(callbackData, "add_tarantula_species:")
+			speciesID, err := strconv.Atoi(speciesIDStr)
+			if err != nil {
+				return c.Send("Invalid species ID")
+			}
+			return t.handleTarantulaSpeciesSelected(c, speciesID)
+		}
+
 		callback := parseCallback(callbackData)
 		switch callback.Action {
 		case selectCallback:

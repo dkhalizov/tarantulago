@@ -23,8 +23,11 @@ const (
 	StateNotificationSettings FormState = "notification_settings"
 	StateRecordingMolt        FormState = "recording_molt"
 	StateRecordingFeeding     FormState = "recording_feeding"
+	StateAddingPhoto          FormState = "adding_photo"
 
-	StateAddingPhoto FormState = "adding_photo"
+	StateCreatingColony   FormState = "creating_tarantula_colony"
+	StateAddingToColony   FormState = "adding_to_colony"
+	StateSelectingSpecies FormState = "selecting_colony_species"
 )
 
 type TarantulaFormField string
@@ -50,16 +53,24 @@ const (
 	FieldFeedingCount TarantulaFormField = "feeding_count"
 
 	FieldPhoto TarantulaFormField = "photo"
+
+	FieldColonySelection   TarantulaFormField = "colony_selection"
+	FieldTarantulaSelection TarantulaFormField = "tarantula_selection"
+	FieldFormationDate     TarantulaFormField = "formation_date"
 )
 
 type UserSession struct {
-	CurrentState     FormState
-	CurrentField     TarantulaFormField
-	TarantulaData    models.Tarantula
-	MoltData         models.MoltRecord
-	Colony           models.CricketColony
-	FeedEvent        models.FeedingEvent
-	LastActivityTime time.Time
+	CurrentState       FormState
+	CurrentField       TarantulaFormField
+	TarantulaData      models.Tarantula
+	MoltData           models.MoltRecord
+	Colony             models.CricketColony
+	TarantulaColony    models.TarantulaColony
+	ColonyMember       models.TarantulaColonyMember
+	FeedEvent          models.FeedingEvent
+	LastActivityTime   time.Time
+	SelectedColonyID   int
+	SelectedTarantulaID int
 }
 
 func (s *UserSession) reset() {
@@ -68,7 +79,11 @@ func (s *UserSession) reset() {
 	s.TarantulaData = models.Tarantula{}
 	s.MoltData = models.MoltRecord{}
 	s.Colony = models.CricketColony{}
+	s.TarantulaColony = models.TarantulaColony{}
+	s.ColonyMember = models.TarantulaColonyMember{}
 	s.FeedEvent = models.FeedingEvent{}
+	s.SelectedColonyID = 0
+	s.SelectedTarantulaID = 0
 }
 
 type SessionManager struct {
@@ -106,15 +121,45 @@ func (t *TarantulaBot) handleTarantulaFormInput(c tele.Context, session *UserSes
 	case FieldName:
 		session.TarantulaData.Name = c.Text()
 		session.CurrentField = FieldSpecies
-		err := c.Send("Great name! Now, what species is your tarantula? (Please enter the species ID)")
+		t.sessions.UpdateSession(c.Sender().ID, session)
+
+		// Show species selection buttons
+		species, err := t.db.GetAllSpecies(context.Background())
 		if err != nil {
-			return err
+			return c.Send("Failed to load species list. Please try again.")
 		}
 
+		msg := "Great name! Now, what species is your tarantula?"
+		markup := &tele.ReplyMarkup{}
+		var buttons [][]tele.InlineButton
+
+		// Show species in rows of 2
+		for i := 0; i < len(species); i += 2 {
+			var row []tele.InlineButton
+			btn1 := tele.InlineButton{
+				Text: species[i].CommonName,
+				Data: fmt.Sprintf("add_tarantula_species:%d", species[i].ID),
+			}
+			row = append(row, btn1)
+
+			if i+1 < len(species) {
+				btn2 := tele.InlineButton{
+					Text: species[i+1].CommonName,
+					Data: fmt.Sprintf("add_tarantula_species:%d", species[i+1].ID),
+				}
+				row = append(row, btn2)
+			}
+			buttons = append(buttons, row)
+		}
+
+		markup.InlineKeyboard = buttons
+		return c.Send(msg, markup)
+
 	case FieldSpecies:
+		// This case is now handled by callback, but keep for backward compatibility
 		speciesID, err := strconv.Atoi(c.Text())
 		if err != nil {
-			return c.Send("Please enter a valid species ID number")
+			return c.Send("Please use the buttons to select a species")
 		}
 		session.TarantulaData.SpeciesID = speciesID
 		session.CurrentField = FieldAcquisitionDate
@@ -303,13 +348,28 @@ func (t *TarantulaBot) handleFeedingFormInput(c tele.Context, session *UserSessi
 		session.FeedEvent.FeedingDate = time.Now()
 		session.FeedEvent.UserID = c.Sender().ID
 		session.FeedEvent.FeedingStatusID = int(models.FeedingStatusAccepted)
+
+		// Check if this is colony feeding or individual feeding
+		if session.SelectedColonyID > 0 {
+			colonyID := session.SelectedColonyID
+			session.FeedEvent.TarantulaColonyID = &colonyID
+			session.FeedEvent.TarantulaID = 0 // Not individual feeding
+		}
+
 		_, err = t.db.RecordFeeding(context.Background(), session.FeedEvent)
 		if err != nil {
 			return fmt.Errorf("failed to save feeding event: %w", err)
 		}
 
+		// Check if it was colony feeding before reset
+		isColonyFeeding := session.FeedEvent.TarantulaColonyID != nil
 		session.reset()
-		err = sendSuccess(c, "Feeding event recorded!")
+
+		if isColonyFeeding {
+			err = sendSuccess(c, "Colony feeding recorded!")
+		} else {
+			err = sendSuccess(c, "Feeding event recorded!")
+		}
 	}
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
@@ -357,5 +417,75 @@ func (t *TarantulaBot) handleCricketsFormInput(c tele.Context, session *UserSess
 		err = sendSuccess(c, fmt.Sprintf("Cricket count updated to %d!", count))
 	}
 
+	return err
+}
+
+func (t *TarantulaBot) handleTarantulaColonyFormInput(c tele.Context, session *UserSession) error {
+	var err error
+
+	switch session.CurrentField {
+	case FieldColonyName:
+		session.TarantulaColony.ColonyName = c.Text()
+		session.CurrentField = FieldSpecies
+		t.sessions.UpdateSession(c.Sender().ID, session)
+
+		// Show species selection (communal species only)
+		// Get all species and filter for communal ones
+		species, err := t.db.GetAllSpecies(context.Background())
+		if err != nil {
+			return c.Send("Failed to load species list. Please try again.")
+		}
+
+		msg := "Great! Now select the species for this colony:"
+		markup := &tele.ReplyMarkup{}
+		var buttons [][]tele.InlineButton
+
+		// Show only communal species
+		for _, sp := range species {
+			if sp.IsCommunal {
+				btn := tele.InlineButton{
+					Text: sp.CommonName + " (" + sp.ScientificName + ")",
+					Data: fmt.Sprintf("colony_species:%d", sp.ID),
+				}
+				buttons = append(buttons, []tele.InlineButton{btn})
+			}
+		}
+
+		// If no communal species found, show all species as fallback
+		if len(buttons) == 0 {
+			for _, sp := range species {
+				btn := tele.InlineButton{
+					Text: sp.CommonName,
+					Data: fmt.Sprintf("colony_species:%d", sp.ID),
+				}
+				buttons = append(buttons, []tele.InlineButton{btn})
+			}
+		}
+
+		markup.InlineKeyboard = buttons
+		return c.Send(msg, markup)
+
+	case FieldFormationDate:
+		date, ok := t.parseDate(c)
+		if !ok {
+			return nil
+		}
+		session.TarantulaColony.FormationDate = date
+		session.TarantulaColony.UserID = c.Sender().ID
+
+		// Create the colony
+		_, err = t.db.CreateColony(context.Background(), session.TarantulaColony)
+		if err != nil {
+			session.reset()
+			return SendError(c, fmt.Sprintf("Failed to create colony: %v", err))
+		}
+
+		// Save colony name before reset
+		colonyName := session.TarantulaColony.ColonyName
+		session.reset()
+		return sendSuccess(c, fmt.Sprintf("Colony '%s' created successfully! You can now add tarantulas to it.", colonyName))
+	}
+
+	t.sessions.UpdateSession(c.Sender().ID, session)
 	return err
 }

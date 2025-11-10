@@ -14,33 +14,41 @@ import (
 )
 
 type Menu struct {
-	main      *tele.ReplyMarkup
-	tarantula *tele.ReplyMarkup
-	settings  *tele.ReplyMarkup
-	colony    *tele.ReplyMarkup
-	analytics *tele.ReplyMarkup
-	back      tele.Btn
+	main             *tele.ReplyMarkup
+	tarantula        *tele.ReplyMarkup
+	settings         *tele.ReplyMarkup
+	colony           *tele.ReplyMarkup
+	tarantulaColony  *tele.ReplyMarkup
+	analytics        *tele.ReplyMarkup
+	back             tele.Btn
 }
 
 var (
 	mainMarkup    = tele.ReplyMarkup{ResizeKeyboard: true}
 	btnBackToMain = mainMarkup.Text("⬅️ Back to Main Menu")
 	menu          = &Menu{
-		main:      &mainMarkup,
-		tarantula: &tele.ReplyMarkup{ResizeKeyboard: true},
-		colony:    &tele.ReplyMarkup{ResizeKeyboard: true},
-		settings:  &tele.ReplyMarkup{ResizeKeyboard: true},
-		analytics: &tele.ReplyMarkup{ResizeKeyboard: true},
-		back:      btnBackToMain,
+		main:            &mainMarkup,
+		tarantula:       &tele.ReplyMarkup{ResizeKeyboard: true},
+		colony:          &tele.ReplyMarkup{ResizeKeyboard: true},
+		tarantulaColony: &tele.ReplyMarkup{ResizeKeyboard: true},
+		settings:        &tele.ReplyMarkup{ResizeKeyboard: true},
+		analytics:       &tele.ReplyMarkup{ResizeKeyboard: true},
+		back:            btnBackToMain,
 	}
-	btnAddTarantula   = menu.tarantula.Text("➕ Add New Tarantula")
-	btnListTarantulas = menu.tarantula.Text("📋 List Tarantulas")
-	btnViewMolts      = menu.tarantula.Text("📊 View Molt History")
-	btnQuickActions   = menu.tarantula.Text("⚡ Quick Actions")
+	btnAddTarantula     = menu.tarantula.Text("➕ Add New Tarantula")
+	btnListTarantulas   = menu.tarantula.Text("📋 List Tarantulas")
+	btnViewMolts        = menu.tarantula.Text("📊 View Molt History")
+	btnQuickActions     = menu.tarantula.Text("⚡ Quick Actions")
+	btnManageColonies   = menu.tarantula.Text("👥 Manage Colonies")
 
 	btnColonyStatus   = menu.colony.Text("📊 Cricket Status")
 	btnUpdateCount    = menu.colony.Text("🔢 Update Cricket Count")
 	btnFeedingHistory = menu.colony.Text("📈 Feeding History")
+
+	btnCreateColony    = menu.tarantulaColony.Text("➕ Create Colony")
+	btnListColonies    = menu.tarantulaColony.Text("📋 List Colonies")
+	btnAddToColony     = menu.tarantulaColony.Text("👤 Add Member")
+	btnBackToTarantula = menu.tarantulaColony.Text("⬅️ Back to Tarantulas")
 
 	btnFeedingPatterns = menu.analytics.Text("🍽️ Feeding Patterns")
 	btnGrowthCharts    = menu.analytics.Text("📈 Growth Charts")
@@ -67,7 +75,14 @@ func (m *Menu) init() {
 	m.tarantula.Reply(
 		m.tarantula.Row(btnAddTarantula, btnListTarantulas),
 		m.tarantula.Row(btnViewMolts, btnQuickActions),
+		m.tarantula.Row(btnManageColonies),
 		m.tarantula.Row(m.back),
+	)
+
+	m.tarantulaColony.Reply(
+		m.tarantulaColony.Row(btnCreateColony, btnListColonies),
+		m.tarantulaColony.Row(btnAddToColony),
+		m.tarantulaColony.Row(btnBackToTarantula),
 	)
 
 	m.colony.Reply(
@@ -285,6 +300,27 @@ func (t *TarantulaBot) setupHandlers() {
 		return t.showTarantulaList(c)
 	})
 
+	// Tarantula Colony Management Handlers
+	b.Handle(&btnManageColonies, func(c tele.Context) error {
+		return c.Send("👥 Colony Management:", menu.tarantulaColony)
+	})
+
+	b.Handle(&btnBackToTarantula, func(c tele.Context) error {
+		return c.Send("Tarantula Management:", menu.tarantula)
+	})
+
+	b.Handle(&btnCreateColony, func(c tele.Context) error {
+		return t.handleCreateColony(c)
+	})
+
+	b.Handle(&btnListColonies, func(c tele.Context) error {
+		return t.handleListColonies(c)
+	})
+
+	b.Handle(&btnAddToColony, func(c tele.Context) error {
+		return t.handleAddToColony(c)
+	})
+
 	b.Handle(&btnUpdateCount, func(c tele.Context) error {
 		session := t.sessions.GetSession(c.Sender().ID)
 		session.CurrentState = StateAddingCrickets
@@ -463,6 +499,8 @@ func (t *TarantulaBot) setupHandlers() {
 			return t.handleCricketsFormInput(c, session)
 		case StateNotificationSettings:
 			return t.handleSettingsInput(c, session)
+		case StateCreatingColony:
+			return t.handleTarantulaColonyFormInput(c, session)
 
 		default:
 			return nil
@@ -1271,4 +1309,274 @@ func (t *TarantulaBot) sendOrEdit(c tele.Context, text string, options ...interf
 	}
 	// Otherwise send new message (if this is from menu button)
 	return c.Send(text, options...)
+}
+
+// ========== Tarantula Colony Management Handlers ==========
+
+func (t *TarantulaBot) handleCreateColony(c tele.Context) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.CurrentState = StateCreatingColony
+	session.CurrentField = FieldColonyName
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("👥 Let's create a tarantula colony!\n\nWhat would you like to name this colony?\n(e.g., 'Balfouri Group', 'Main Colony')")
+}
+
+func (t *TarantulaBot) handleListColonies(c tele.Context) error {
+	colonies, err := t.db.GetUserColonies(t.ctx, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get colonies: %v", err))
+	}
+
+	if len(colonies) == 0 {
+		return SendInfo(c, "👥 You don't have any colonies yet.\n\nUse 'Create Colony' to start a communal setup!")
+	}
+
+	msg := "👥 *Your Tarantula Colonies*\n\n"
+
+	markup := &tele.ReplyMarkup{}
+	var buttons [][]tele.InlineButton
+
+	for _, colony := range colonies {
+		activeMembers := 0
+		for _, member := range colony.Members {
+			if member.IsActive {
+				activeMembers++
+			}
+		}
+
+		msg += fmt.Sprintf("*%s*\n", colony.ColonyName)
+		msg += fmt.Sprintf("Species: %s\n", colony.Species.CommonName)
+		msg += fmt.Sprintf("Members: %d tarantulas\n", activeMembers)
+		msg += fmt.Sprintf("Formed: %s\n", colony.FormationDate.Format("Jan 2, 2006"))
+		if colony.Notes != "" {
+			msg += fmt.Sprintf("Notes: %s\n", colony.Notes)
+		}
+		msg += "\n"
+
+		btn := tele.InlineButton{
+			Text: fmt.Sprintf("📋 %s (%d)", colony.ColonyName, activeMembers),
+			Data: fmt.Sprintf("colony_details:%d", colony.ID),
+		}
+		buttons = append(buttons, []tele.InlineButton{btn})
+	}
+
+	markup.InlineKeyboard = buttons
+	return c.Send(msg, markup, tele.ModeMarkdown)
+}
+
+func (t *TarantulaBot) handleAddToColony(c tele.Context) error {
+	// First check if user has any colonies
+	colonies, err := t.db.GetUserColonies(t.ctx, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get colonies: %v", err))
+	}
+
+	if len(colonies) == 0 {
+		return SendInfo(c, "❌ You need to create a colony first!\n\nUse 'Create Colony' to start.")
+	}
+
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.CurrentState = StateAddingToColony
+	session.CurrentField = FieldColonySelection
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	// Show colony selection
+	msg := "👤 Add a tarantula to a colony\n\nSelect the colony:"
+
+	markup := &tele.ReplyMarkup{}
+	var buttons [][]tele.InlineButton
+
+	for _, colony := range colonies {
+		btn := tele.InlineButton{
+			Text: fmt.Sprintf("%s - %s", colony.ColonyName, colony.Species.CommonName),
+			Data: fmt.Sprintf("select_colony_for_add:%d", colony.ID),
+		}
+		buttons = append(buttons, []tele.InlineButton{btn})
+	}
+
+	markup.InlineKeyboard = buttons
+	return c.Send(msg, markup)
+}
+
+func (t *TarantulaBot) handleColonySpeciesSelected(c tele.Context, speciesID int) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+
+	// Verify we're in colony creation mode
+	if session.CurrentState != StateCreatingColony {
+		return SendError(c, "Invalid session state. Please start over by selecting 'Create Colony'.")
+	}
+
+	session.TarantulaColony.SpeciesID = speciesID
+	session.CurrentField = FieldFormationDate
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("When was this colony formed? (YYYY-MM-DD)\n(Or enter today's date if forming now)")
+}
+
+func (t *TarantulaBot) handleColonyDetails(c tele.Context, colonyID int32) error {
+	colony, err := t.db.GetColony(t.ctx, colonyID, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get colony details: %v", err))
+	}
+
+	activeMembers := 0
+	var membersList strings.Builder
+	for _, member := range colony.Members {
+		if member.IsActive {
+			activeMembers++
+			membersList.WriteString(fmt.Sprintf("  • %s (joined %s)\n",
+				member.Tarantula.Name,
+				member.JoinedDate.Format("Jan 2, 2006")))
+		}
+	}
+
+	msg := fmt.Sprintf("👥 *Colony: %s*\n\n", colony.ColonyName)
+	msg += fmt.Sprintf("Species: %s\n", colony.Species.CommonName)
+	msg += fmt.Sprintf("Scientific: %s\n", colony.Species.ScientificName)
+	msg += fmt.Sprintf("Formed: %s\n", colony.FormationDate.Format("Jan 2, 2006"))
+	msg += fmt.Sprintf("\n*Members (%d):*\n", activeMembers)
+	if activeMembers > 0 {
+		msg += membersList.String()
+	} else {
+		msg += "  No members yet\n"
+	}
+
+	if colony.Notes != "" {
+		msg += fmt.Sprintf("\nNotes: %s\n", colony.Notes)
+	}
+
+	markup := &tele.ReplyMarkup{}
+	btnAddMember := tele.InlineButton{
+		Text: "➕ Add Member",
+		Data: fmt.Sprintf("select_colony_for_add:%d", colony.ID),
+	}
+	btnFeedColony := tele.InlineButton{
+		Text: "🍽️ Feed Colony",
+		Data: fmt.Sprintf("feed_colony:%d", colony.ID),
+	}
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{btnFeedColony},
+		{btnAddMember},
+	}
+
+	return c.Send(msg, markup, tele.ModeMarkdown)
+}
+
+func (t *TarantulaBot) handleColonySelectedForAdd(c tele.Context, colonyID int32) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.SelectedColonyID = int(colonyID)
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	// Get colony to show species
+	colony, err := t.db.GetColony(t.ctx, colonyID, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get colony: %v", err))
+	}
+
+	// Get user's tarantulas of the same species
+	allTarantulas, err := t.db.GetAllTarantulas(t.ctx, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get tarantulas: %v", err))
+	}
+
+	var availableTarantulas []models.TarantulaListItem
+	for _, t := range allTarantulas {
+		if t.SpeciesID == int32(colony.SpeciesID) {
+			availableTarantulas = append(availableTarantulas, t)
+		}
+	}
+
+	if len(availableTarantulas) == 0 {
+		return SendInfo(c, fmt.Sprintf("You don't have any %s to add to this colony.\n\nAdd some %s first!",
+			colony.Species.CommonName, colony.Species.CommonName))
+	}
+
+	msg := fmt.Sprintf("Select a %s to add to the colony:", colony.Species.CommonName)
+
+	markup := &tele.ReplyMarkup{}
+	var buttons [][]tele.InlineButton
+
+	for _, tarantula := range availableTarantulas {
+		btn := tele.InlineButton{
+			Text: tarantula.Name,
+			Data: fmt.Sprintf("add_tarantula_to_colony:%d", tarantula.ID),
+		}
+		buttons = append(buttons, []tele.InlineButton{btn})
+	}
+
+	markup.InlineKeyboard = buttons
+	return c.Send(msg, markup)
+}
+
+func (t *TarantulaBot) handleTarantulaSelectedForColony(c tele.Context, tarantulaID int32) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+	colonyID := session.SelectedColonyID
+
+	if colonyID == 0 {
+		return SendError(c, "Session expired. Please try again.")
+	}
+
+	// Add the tarantula to the colony
+	member := models.TarantulaColonyMember{
+		ColonyID:    colonyID,
+		TarantulaID: int(tarantulaID),
+		JoinedDate:  time.Now(),
+		IsActive:    true,
+		UserID:      c.Sender().ID,
+	}
+
+	err := t.db.AddMemberToColony(t.ctx, member)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to add member: %v", err))
+	}
+
+	session.reset()
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return sendSuccess(c, "Tarantula added to colony successfully!")
+}
+
+func (t *TarantulaBot) handleTarantulaSpeciesSelected(c tele.Context, speciesID int) error {
+	session := t.sessions.GetSession(c.Sender().ID)
+
+	if session.CurrentState != StateAddingTarantula || session.CurrentField != FieldSpecies {
+		return SendError(c, "Invalid session state. Please start over.")
+	}
+
+	session.TarantulaData.SpeciesID = speciesID
+	session.CurrentField = FieldAcquisitionDate
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send("When did you acquire this tarantula? (YYYY-MM-DD)")
+}
+
+func (t *TarantulaBot) handleFeedColony(c tele.Context, colonyID int32) error {
+	// Get colony details
+	colony, err := t.db.GetColony(t.ctx, colonyID, c.Sender().ID)
+	if err != nil {
+		return SendError(c, fmt.Sprintf("Failed to get colony: %v", err))
+	}
+
+	// Count active members
+	activeMembers := 0
+	for _, member := range colony.Members {
+		if member.IsActive {
+			activeMembers++
+		}
+	}
+
+	if activeMembers == 0 {
+		return SendInfo(c, "This colony has no members yet. Add some tarantulas first!")
+	}
+
+	// Prompt for number of crickets
+	session := t.sessions.GetSession(c.Sender().ID)
+	session.CurrentState = StateFeeding
+	session.SelectedColonyID = int(colonyID)
+	session.CurrentField = FieldFeedingCount
+	t.sessions.UpdateSession(c.Sender().ID, session)
+
+	return c.Send(fmt.Sprintf("🍽️ Feeding colony: %s (%d members)\n\nHow many crickets are you offering?",
+		colony.ColonyName, activeMembers))
 }

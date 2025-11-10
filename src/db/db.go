@@ -42,6 +42,8 @@ func NewTarantulaDB(connectionString string) (*TarantulaDB, error) {
 		&models.TelegramUser{},
 		&models.WeightRecord{},
 		&models.TarantulaPhoto{},
+		&models.TarantulaColony{},
+		&models.TarantulaColonyMember{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
@@ -85,6 +87,15 @@ func (db *TarantulaDB) AddTarantula(ctx context.Context, tarantula models.Tarant
 	}
 
 	return nil
+}
+
+func (db *TarantulaDB) GetAllSpecies(ctx context.Context) ([]models.TarantulaSpecies, error) {
+	var species []models.TarantulaSpecies
+	result := db.db.WithContext(ctx).Order("common_name ASC").Find(&species)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get species: %w", result.Error)
+	}
+	return species, nil
 }
 
 func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEvent) (int64, error) {
@@ -1791,4 +1802,212 @@ func (db *TarantulaDB) generateMoltRecommendation(result struct {
 	}
 
 	return "Continue normal care routine."
+}
+
+// ========== Tarantula Colony Service Implementation ==========
+
+func (db *TarantulaDB) CreateColony(ctx context.Context, colony models.TarantulaColony) (int64, error) {
+	result := db.db.WithContext(ctx).Create(&colony)
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to create tarantula colony: %w", result.Error)
+	}
+	return int64(colony.ID), nil
+}
+
+func (db *TarantulaDB) GetColony(ctx context.Context, colonyID int32, userID int64) (*models.TarantulaColony, error) {
+	var colony models.TarantulaColony
+	result := db.db.WithContext(ctx).
+		Preload("Species").
+		Preload("Enclosure").
+		Preload("Members").
+		Preload("Members.Tarantula").
+		Where("id = ? AND user_id = ?", colonyID, userID).
+		First(&colony)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colony: %w", result.Error)
+	}
+	return &colony, nil
+}
+
+func (db *TarantulaDB) GetUserColonies(ctx context.Context, userID int64) ([]models.TarantulaColony, error) {
+	var colonies []models.TarantulaColony
+	result := db.db.WithContext(ctx).
+		Preload("Species").
+		Preload("Enclosure").
+		Preload("Members", "is_active = ?", true).
+		Preload("Members.Tarantula").
+		Where("user_id = ?", userID).
+		Order("formation_date DESC").
+		Find(&colonies)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colonies: %w", result.Error)
+	}
+	return colonies, nil
+}
+
+func (db *TarantulaDB) AddMemberToColony(ctx context.Context, member models.TarantulaColonyMember) error {
+	return db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Verify colony exists and belongs to user
+		var colony models.TarantulaColony
+		if err := tx.Where("id = ? AND user_id = ?", member.ColonyID, member.UserID).First(&colony).Error; err != nil {
+			return fmt.Errorf("colony not found or access denied: %w", err)
+		}
+
+		// Verify tarantula exists and belongs to user
+		var tarantula models.Tarantula
+		if err := tx.Where("id = ? AND user_id = ?", member.TarantulaID, member.UserID).First(&tarantula).Error; err != nil {
+			return fmt.Errorf("tarantula not found or access denied: %w", err)
+		}
+
+		// Verify species match
+		if tarantula.SpeciesID != colony.SpeciesID {
+			return fmt.Errorf("tarantula species does not match colony species")
+		}
+
+		// Create the membership record
+		if err := tx.Create(&member).Error; err != nil {
+			return fmt.Errorf("failed to add member to colony: %w", err)
+		}
+
+		// Update tarantula's colony_id
+		if err := tx.Model(&tarantula).Update("colony_id", member.ColonyID).Error; err != nil {
+			return fmt.Errorf("failed to update tarantula colony reference: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (db *TarantulaDB) RemoveMemberFromColony(ctx context.Context, colonyID, tarantulaID int32, userID int64) error {
+	return db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Find active membership
+		var member models.TarantulaColonyMember
+		if err := tx.Where("colony_id = ? AND tarantula_id = ? AND is_active = ? AND user_id = ?",
+			colonyID, tarantulaID, true, userID).First(&member).Error; err != nil {
+			return fmt.Errorf("active membership not found: %w", err)
+		}
+
+		// Mark as inactive and set left date
+		now := time.Now()
+		member.IsActive = false
+		member.LeftDate = &now
+		if err := tx.Save(&member).Error; err != nil {
+			return fmt.Errorf("failed to update membership: %w", err)
+		}
+
+		// Clear tarantula's colony_id
+		var tarantula models.Tarantula
+		if err := tx.Where("id = ? AND user_id = ?", tarantulaID, userID).First(&tarantula).Error; err != nil {
+			return fmt.Errorf("tarantula not found: %w", err)
+		}
+		if err := tx.Model(&tarantula).Update("colony_id", nil).Error; err != nil {
+			return fmt.Errorf("failed to clear tarantula colony reference: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (db *TarantulaDB) GetColonyMembers(ctx context.Context, colonyID int32, userID int64, activeOnly bool) ([]models.TarantulaColonyMember, error) {
+	var members []models.TarantulaColonyMember
+
+	query := db.db.WithContext(ctx).
+		Preload("Tarantula").
+		Preload("Tarantula.Species").
+		Where("colony_id = ? AND user_id = ?", colonyID, userID)
+
+	if activeOnly {
+		query = query.Where("is_active = ?", true)
+	}
+
+	result := query.Order("joined_date ASC").Find(&members)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colony members: %w", result.Error)
+	}
+	return members, nil
+}
+
+func (db *TarantulaDB) UpdateColony(ctx context.Context, colony models.TarantulaColony) error {
+	result := db.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", colony.ID, colony.UserID).
+		Updates(&colony)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update colony: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("colony not found or access denied")
+	}
+	return nil
+}
+
+// GetColoniesDueFeeding returns colonies that need feeding based on their species schedule
+func (db *TarantulaDB) GetColoniesDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaColony, error) {
+	var colonies []models.TarantulaColony
+
+	// Get all user's colonies with species and member info
+	result := db.db.WithContext(ctx).
+		Preload("Species").
+		Preload("Members", "is_active = ?", true).
+		Preload("Members.Tarantula").
+		Where("user_id = ?", userID).
+		Find(&colonies)
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to get colonies: %w", result.Error)
+	}
+
+	var dueColonies []models.TarantulaColony
+
+	for _, colony := range colonies {
+		// Skip colonies with no active members
+		if len(colony.Members) == 0 {
+			continue
+		}
+
+		// Get last colony feeding
+		var lastFeeding models.FeedingEvent
+		err := db.db.WithContext(ctx).
+			Where("tarantula_colony_id = ?", colony.ID).
+			Order("feeding_date DESC").
+			First(&lastFeeding).Error
+
+		daysSinceFeeding := 999.0
+		if err == nil {
+			daysSinceFeeding = time.Since(lastFeeding.FeedingDate).Hours() / 24
+		}
+
+		// Get feeding schedule for this species
+		// Use average size for colony members
+		var avgSize float64
+		for _, member := range colony.Members {
+			if member.Tarantula.CurrentSize > 0 {
+				avgSize += member.Tarantula.CurrentSize
+			}
+		}
+		if len(colony.Members) > 0 {
+			avgSize /= float64(len(colony.Members))
+		}
+
+		var schedule models.FeedingSchedule
+		err = db.db.WithContext(ctx).
+			Where("species_id = ? AND body_length_cm >= ?", colony.SpeciesID, avgSize).
+			Order("body_length_cm ASC").
+			First(&schedule).Error
+
+		if err == nil && schedule.FrequencyID > 0 {
+			var frequency models.FeedingFrequency
+			if err = db.db.First(&frequency, schedule.FrequencyID).Error; err == nil {
+				// Check if colony is due
+				if daysSinceFeeding >= float64(frequency.MinDays) {
+					dueColonies = append(dueColonies, colony)
+				}
+			}
+		}
+	}
+
+	return dueColonies, nil
 }

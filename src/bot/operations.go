@@ -16,6 +16,8 @@ type TarantulaOperations interface {
 
 	ColonyService
 
+	TarantulaColonyService
+
 	AnalyticsService
 
 	NotificationOperations
@@ -27,6 +29,7 @@ type TarantulaService interface {
 	GetTarantulaWithSpeciesData(ctx context.Context, tarantulaID int32, userID int64) (*models.Tarantula, error)
 	GetAllTarantulas(ctx context.Context, userID int64) ([]models.TarantulaListItem, error)
 	GetTarantulasDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaListItem, error)
+	GetAllSpecies(ctx context.Context) ([]models.TarantulaSpecies, error)
 	UpdateTarantulaEnclosure(ctx context.Context, tarantulaID, enclosureID, userID int64) error
 
 	RecordWeight(ctx context.Context, weight models.WeightRecord) (int64, error)
@@ -58,6 +61,17 @@ type ColonyService interface {
 	RecordColonyMaintenance(ctx context.Context, record models.ColonyMaintenanceRecord) (int64, error)
 	GetColonyMaintenanceHistory(ctx context.Context, colonyID int64, userID int64, limit int32) ([]models.ColonyMaintenanceRecord, error)
 	GetMaintenanceTypes(ctx context.Context) ([]models.ColonyMaintenanceType, error)
+}
+
+type TarantulaColonyService interface {
+	CreateColony(ctx context.Context, colony models.TarantulaColony) (int64, error)
+	GetColony(ctx context.Context, colonyID int32, userID int64) (*models.TarantulaColony, error)
+	GetUserColonies(ctx context.Context, userID int64) ([]models.TarantulaColony, error)
+	GetColoniesDueFeeding(ctx context.Context, userID int64) ([]models.TarantulaColony, error)
+	AddMemberToColony(ctx context.Context, member models.TarantulaColonyMember) error
+	RemoveMemberFromColony(ctx context.Context, colonyID, tarantulaID int32, userID int64) error
+	GetColonyMembers(ctx context.Context, colonyID int32, userID int64, activeOnly bool) ([]models.TarantulaColonyMember, error)
+	UpdateColony(ctx context.Context, colony models.TarantulaColony) error
 }
 
 type AnalyticsService interface {
