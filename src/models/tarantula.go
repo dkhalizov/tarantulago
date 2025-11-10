@@ -32,6 +32,7 @@ type TarantulaSpecies struct {
 	Temperament                   string  `json:"temperament"`
 	HumidityRequirementPercent    int     `json:"humidity_requirement_percent"`
 	TemperatureRequirementCelsius float64 `json:"temperature_requirement_celsius"`
+	IsCommunal                    bool    `json:"is_communal" gorm:"default:false;index"`
 }
 
 type MoltStage struct {

@@ -427,19 +427,42 @@ func (t *TarantulaBot) handleTarantulaColonyFormInput(c tele.Context, session *U
 	case FieldColonyName:
 		session.TarantulaColony.ColonyName = c.Text()
 		session.CurrentField = FieldSpecies
+		t.sessions.UpdateSession(c.Sender().ID, session)
 
-		// Show species selection (only communal species)
+		// Show species selection (communal species only)
+		// Get all species and filter for communal ones
+		species, err := t.db.GetAllSpecies(context.Background())
+		if err != nil {
+			return c.Send("Failed to load species list. Please try again.")
+		}
+
 		msg := "Great! Now select the species for this colony:"
 		markup := &tele.ReplyMarkup{}
+		var buttons [][]tele.InlineButton
 
-		// In a real implementation, we would query only communal species
-		// For now, we'll just show a button for Balfouri
-		btnBalfouri := tele.InlineButton{
-			Text: "Monocentropus balfouri",
-			Data: "colony_species:1",
+		// Show only communal species
+		for _, sp := range species {
+			if sp.IsCommunal {
+				btn := tele.InlineButton{
+					Text: sp.CommonName + " (" + sp.ScientificName + ")",
+					Data: fmt.Sprintf("colony_species:%d", sp.ID),
+				}
+				buttons = append(buttons, []tele.InlineButton{btn})
+			}
 		}
-		markup.InlineKeyboard = [][]tele.InlineButton{{btnBalfouri}}
 
+		// If no communal species found, show all species as fallback
+		if len(buttons) == 0 {
+			for _, sp := range species {
+				btn := tele.InlineButton{
+					Text: sp.CommonName,
+					Data: fmt.Sprintf("colony_species:%d", sp.ID),
+				}
+				buttons = append(buttons, []tele.InlineButton{btn})
+			}
+		}
+
+		markup.InlineKeyboard = buttons
 		return c.Send(msg, markup)
 
 	case FieldFormationDate:
@@ -457,8 +480,10 @@ func (t *TarantulaBot) handleTarantulaColonyFormInput(c tele.Context, session *U
 			return SendError(c, fmt.Sprintf("Failed to create colony: %v", err))
 		}
 
+		// Save colony name before reset
+		colonyName := session.TarantulaColony.ColonyName
 		session.reset()
-		return sendSuccess(c, fmt.Sprintf("Colony '%s' created successfully! You can now add tarantulas to it.", session.TarantulaColony.ColonyName))
+		return sendSuccess(c, fmt.Sprintf("Colony '%s' created successfully! You can now add tarantulas to it.", colonyName))
 	}
 
 	t.sessions.UpdateSession(c.Sender().ID, session)

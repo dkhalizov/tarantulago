@@ -1389,7 +1389,7 @@ func (t *TarantulaBot) handleAddToColony(c tele.Context) error {
 
 	for _, colony := range colonies {
 		btn := tele.InlineButton{
-			Text: fmt.Sprintf("%s (%s)", colony.ColonyName, colony.Species.CommonName),
+			Text: fmt.Sprintf("%s - %s", colony.ColonyName, colony.Species.CommonName),
 			Data: fmt.Sprintf("select_colony_for_add:%d", colony.ID),
 		}
 		buttons = append(buttons, []tele.InlineButton{btn})
