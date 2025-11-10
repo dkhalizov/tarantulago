@@ -100,7 +100,7 @@ func (n *NotificationSystem) processScheduledNotifications() {
 func (n *NotificationSystem) triggerChecks(user models.TelegramUser, settings *models.UserSettings) {
 	n.checkFeedings(user.TelegramID, user.ChatID, settings)
 	n.checkMoltPredictions(user.TelegramID, user.ChatID, settings)
-	n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
+	//n.checkColonyMaintenance(user.TelegramID, user.ChatID, settings)
 }
 
 func (n *NotificationSystem) checkFeedings(userID int64, chatID int64, settings *models.UserSettings) {
