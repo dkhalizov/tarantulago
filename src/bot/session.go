@@ -353,7 +353,7 @@ func (t *TarantulaBot) handleFeedingFormInput(c tele.Context, session *UserSessi
 		if session.SelectedColonyID > 0 {
 			colonyID := session.SelectedColonyID
 			session.FeedEvent.TarantulaColonyID = &colonyID
-			session.FeedEvent.TarantulaID = 0 // Not individual feeding
+			session.FeedEvent.TarantulaID = nil // Not individual feeding
 		}
 
 		_, err = t.db.RecordFeeding(context.Background(), session.FeedEvent)

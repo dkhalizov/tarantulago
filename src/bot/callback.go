@@ -106,6 +106,15 @@ func (t *TarantulaBot) setupInlineKeyboards() {
 			return t.handleQuickFeed(c, int32(tarantulaID))
 		}
 
+		if strings.HasPrefix(callbackData, "quick_feed_colony:") {
+			colonyIDStr := strings.TrimPrefix(callbackData, "quick_feed_colony:")
+			colonyID, err := strconv.Atoi(colonyIDStr)
+			if err != nil {
+				return c.Send("Invalid colony ID")
+			}
+			return t.handleQuickFeedColony(c, int32(colonyID))
+		}
+
 		if strings.HasPrefix(callbackData, "add_photo:") || strings.HasPrefix(callbackData, "photo:") {
 			var tarantulaIDStr string
 			if strings.HasPrefix(callbackData, "add_photo:") {
@@ -282,6 +291,27 @@ func (t *TarantulaBot) handleQuickFeed(c tele.Context, tarantulaID int32) error 
 	}
 
 	return c.Send(fmt.Sprintf("✅ %s fed with 1 cricket!", tarantula.Name))
+}
+
+func (t *TarantulaBot) handleQuickFeedColony(c tele.Context, colonyID int32) error {
+	err := t.db.QuickFeedColony(t.ctx, colonyID, c.Sender().ID)
+	if err != nil {
+		return c.Send(fmt.Sprintf("❌ Failed to record colony feeding: %s", err.Error()))
+	}
+
+	colony, err := t.db.GetColony(t.ctx, colonyID, c.Sender().ID)
+	if err != nil {
+		return c.Send("✅ Colony fed successfully! (Could not retrieve details)")
+	}
+
+	activeMembers := 0
+	for _, member := range colony.Members {
+		if member.IsActive {
+			activeMembers++
+		}
+	}
+
+	return c.Send(fmt.Sprintf("✅ Colony '%s' fed with 1 cricket! (%d members)", colony.ColonyName, activeMembers))
 }
 
 func (t *TarantulaBot) handleAddPhoto(c tele.Context, tarantulaID int32) error {

@@ -608,7 +608,8 @@ func (t *TarantulaBot) handleTarantulaFeed(c tele.Context, tarantulaID int) erro
 	session := t.sessions.GetSession(c.Sender().ID)
 	session.CurrentState = StateFeeding
 	session.CurrentField = FieldColonyID
-	session.FeedEvent.TarantulaID = tarantulaID
+	tid := tarantulaID
+	session.FeedEvent.TarantulaID = &tid
 	t.sessions.UpdateSession(c.Sender().ID, session)
 
 	return c.Send("What's colony ID?")
@@ -1220,13 +1221,19 @@ func (t *TarantulaBot) handleQuickActions(c tele.Context) error {
 		return fmt.Errorf("failed to get tarantulas: %w", err)
 	}
 
-	if len(tarantulas) == 0 {
-		return c.Send("No tarantulas found. Add one first!")
+	colonies, err := t.db.GetUserColonies(context.Background(), c.Sender().ID)
+	if err != nil {
+		return fmt.Errorf("failed to get colonies: %w", err)
+	}
+
+	if len(tarantulas) == 0 && len(colonies) == 0 {
+		return c.Send("No tarantulas or colonies found. Add one first!")
 	}
 
 	markup := &tele.ReplyMarkup{}
 	var buttons [][]tele.InlineButton
 
+	// Add individual tarantulas
 	for _, spider := range tarantulas {
 		daysSince := int(spider.DaysSinceFeeding)
 		statusEmoji := "🟢"
@@ -1239,6 +1246,22 @@ func (t *TarantulaBot) handleQuickActions(c tele.Context) error {
 		button := tele.InlineButton{
 			Text: fmt.Sprintf("%s %s (%dd)", statusEmoji, spider.Name, daysSince),
 			Data: fmt.Sprintf("quick_feed:%d", spider.ID),
+		}
+		buttons = append(buttons, []tele.InlineButton{button})
+	}
+
+	// Add colonies
+	for _, colony := range colonies {
+		activeMembers := 0
+		for _, member := range colony.Members {
+			if member.IsActive {
+				activeMembers++
+			}
+		}
+
+		button := tele.InlineButton{
+			Text: fmt.Sprintf("👥 %s (%d members)", colony.ColonyName, activeMembers),
+			Data: fmt.Sprintf("quick_feed_colony:%d", colony.ID),
 		}
 		buttons = append(buttons, []tele.InlineButton{button})
 	}

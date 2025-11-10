@@ -95,7 +95,7 @@ func (t *TarantulaBot) handleFeedingIntelligence(c tele.Context) error {
 
 	daysSinceFeeding := 999.0
 	for _, feeding := range recentFeedings {
-		if feeding.TarantulaID == callback.TarantulaID {
+		if feeding.TarantulaID != nil && *feeding.TarantulaID == callback.TarantulaID {
 			daysSinceFeeding = time.Since(feeding.FeedingDate).Hours() / 24
 			break
 		}

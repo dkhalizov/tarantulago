@@ -102,9 +102,21 @@ func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEv
 	var id int64
 	err := db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 
-		var tarantula models.Tarantula
-		if err := tx.Where("id = ? AND user_id = ?", event.TarantulaID, event.UserID).First(&tarantula).Error; err != nil {
-			return fmt.Errorf("tarantula not found or access denied: %w", err)
+		// Validate either individual tarantula or colony (but not both)
+		if event.TarantulaColonyID != nil && *event.TarantulaColonyID > 0 {
+			// Colony feeding - validate colony exists
+			var tarantulaColony models.TarantulaColony
+			if err := tx.Where("id = ? AND user_id = ?", *event.TarantulaColonyID, event.UserID).First(&tarantulaColony).Error; err != nil {
+				return fmt.Errorf("tarantula colony not found or access denied: %w", err)
+			}
+		} else if event.TarantulaID != nil && *event.TarantulaID > 0 {
+			// Individual feeding - validate tarantula exists
+			var tarantula models.Tarantula
+			if err := tx.Where("id = ? AND user_id = ?", *event.TarantulaID, event.UserID).First(&tarantula).Error; err != nil {
+				return fmt.Errorf("tarantula not found or access denied: %w", err)
+			}
+		} else {
+			return fmt.Errorf("feeding event must specify either a tarantula or a colony")
 		}
 
 		var colony models.CricketColony
@@ -127,13 +139,14 @@ func (db *TarantulaDB) RecordFeeding(ctx context.Context, event models.FeedingEv
 		}
 
 		feedingEvent := models.FeedingEvent{
-			TarantulaID:      event.TarantulaID,
-			FeedingDate:      time.Now(),
-			CricketColonyID:  colony.ID,
-			NumberOfCrickets: event.NumberOfCrickets,
-			FeedingStatusID:  int(models.FeedingStatusAccepted),
-			Notes:            event.Notes,
-			UserID:           event.UserID,
+			TarantulaID:       event.TarantulaID,
+			TarantulaColonyID: event.TarantulaColonyID,
+			FeedingDate:       time.Now(),
+			CricketColonyID:   colony.ID,
+			NumberOfCrickets:  event.NumberOfCrickets,
+			FeedingStatusID:   int(models.FeedingStatusAccepted),
+			Notes:             event.Notes,
+			UserID:            event.UserID,
 		}
 
 		if err := tx.Create(&feedingEvent).Error; err != nil {
@@ -1028,8 +1041,9 @@ func (db *TarantulaDB) QuickFeed(ctx context.Context, tarantulaID int32, userID 
 			return fmt.Errorf("no crickets available in colony")
 		}
 
+		tid := int(tarantulaID)
 		feedingEvent := models.FeedingEvent{
-			TarantulaID:      int(tarantulaID),
+			TarantulaID:      &tid,
 			FeedingDate:      time.Now(),
 			CricketColonyID:  colony.ID,
 			NumberOfCrickets: 1,
@@ -1045,6 +1059,48 @@ func (db *TarantulaDB) QuickFeed(ctx context.Context, tarantulaID int32, userID 
 		if err := tx.Model(&colony).
 			UpdateColumn("current_count", gorm.Expr("current_count - 1")).Error; err != nil {
 			return fmt.Errorf("failed to update colony count: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (db *TarantulaDB) QuickFeedColony(ctx context.Context, tarantulaColonyID int32, userID int64) error {
+	return db.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+
+		// Verify colony exists and belongs to user
+		var tarantulaColony models.TarantulaColony
+		if err := tx.Where("id = ? AND user_id = ?", tarantulaColonyID, userID).First(&tarantulaColony).Error; err != nil {
+			return fmt.Errorf("tarantula colony not found: %w", err)
+		}
+
+		var cricketColony models.CricketColony
+		if err := tx.Where("user_id = ?", userID).First(&cricketColony).Error; err != nil {
+			return fmt.Errorf("no cricket colony found: %w", err)
+		}
+
+		if cricketColony.CurrentCount < 1 {
+			return fmt.Errorf("no crickets available in colony")
+		}
+
+		cid := int(tarantulaColonyID)
+		feedingEvent := models.FeedingEvent{
+			TarantulaColonyID: &cid,
+			FeedingDate:       time.Now(),
+			CricketColonyID:   cricketColony.ID,
+			NumberOfCrickets:  1,
+			FeedingStatusID:   int(models.FeedingStatusAccepted),
+			Notes:             "Quick feed - colony",
+			UserID:            userID,
+		}
+
+		if err := tx.Create(&feedingEvent).Error; err != nil {
+			return fmt.Errorf("failed to create feeding event: %w", err)
+		}
+
+		if err := tx.Model(&cricketColony).
+			UpdateColumn("current_count", gorm.Expr("current_count - 1")).Error; err != nil {
+			return fmt.Errorf("failed to update cricket colony count: %w", err)
 		}
 
 		return nil

@@ -73,8 +73,9 @@ func NewFeedingService(db TarantulaOperations) *FeedingServiceImpl {
 }
 
 func (s *FeedingServiceImpl) QuickFeedWithCrickets(ctx context.Context, tarantulaID int32, userID int64, cricketCount int) error {
+	tid := int(tarantulaID)
 	event := models.FeedingEvent{
-		TarantulaID:      int(tarantulaID),
+		TarantulaID:      &tid,
 		FeedingDate:      time.Now(),
 		NumberOfCrickets: cricketCount,
 		Notes:            fmt.Sprintf("Quick feed - %d crickets", cricketCount),

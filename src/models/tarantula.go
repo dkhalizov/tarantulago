@@ -136,7 +136,7 @@ type FeedingSchedule struct {
 
 type FeedingEvent struct {
 	ID                 int       `json:"id" gorm:"primaryKey"`
-	TarantulaID        int       `json:"tarantula_id" gorm:"index"`
+	TarantulaID        *int      `json:"tarantula_id" gorm:"index"`
 	TarantulaColonyID  *int      `json:"tarantula_colony_id" gorm:"index"`
 	FeedingDate        time.Time `json:"feeding_date" gorm:"index;not null"`
 	CricketColonyID    int       `json:"cricket_colony_id" gorm:"index"`
@@ -146,7 +146,7 @@ type FeedingEvent struct {
 	CreatedAt          time.Time `json:"created_at" gorm:"default:CURRENT_TIMESTAMP"`
 	UserID             int64     `json:"user_id" gorm:"index"`
 
-	Tarantula        Tarantula         `json:"tarantula" gorm:"foreignKey:TarantulaID"`
+	Tarantula        *Tarantula        `json:"tarantula,omitempty" gorm:"foreignKey:TarantulaID"`
 	TarantulaColony  *TarantulaColony  `json:"tarantula_colony,omitempty" gorm:"foreignKey:TarantulaColonyID"`
 	CricketColony    CricketColony     `json:"cricket_colony" gorm:"foreignKey:CricketColonyID"`
 	FeedingStatus    FeedingStatus     `json:"feeding_status" gorm:"foreignKey:FeedingStatusID"`
