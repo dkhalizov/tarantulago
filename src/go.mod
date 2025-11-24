@@ -3,7 +3,7 @@ module tarantulago
 go 1.24.0
 
 require (
-	gopkg.in/telebot.v4 v4.0.0-beta.5
+	gopkg.in/telebot.v4 v4.0.0-beta.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.0
 )
