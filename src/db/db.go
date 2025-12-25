@@ -169,11 +169,37 @@ func (db *TarantulaDB) GetTarantulasDueFeeding(ctx context.Context, userID int64
 
 	result := db.db.WithContext(ctx).Raw(`
         WITH LastFeeding AS (
+    -- Get individual feedings
     SELECT
         tarantula_id,
         MAX(feeding_date) as last_feeding_date,
         EXTRACT(DAY FROM (CURRENT_DATE - MAX(feeding_date))) as days_since_feeding
     FROM spider_bot.feeding_events
+    WHERE tarantula_id IS NOT NULL
+    GROUP BY tarantula_id
+
+    UNION ALL
+
+    -- Get colony feedings for tarantulas that are members
+    SELECT
+        tcm.tarantula_id,
+        MAX(fe.feeding_date) as last_feeding_date,
+        EXTRACT(DAY FROM (CURRENT_DATE - MAX(fe.feeding_date))) as days_since_feeding
+    FROM spider_bot.feeding_events fe
+    INNER JOIN spider_bot.tarantula_colony_members tcm
+        ON fe.tarantula_colony_id = tcm.colony_id
+    WHERE fe.tarantula_colony_id IS NOT NULL
+      AND tcm.is_active = true
+      AND (tcm.left_date IS NULL OR fe.feeding_date <= tcm.left_date)
+      AND fe.feeding_date >= tcm.joined_date
+    GROUP BY tcm.tarantula_id
+),
+     CombinedFeeding AS (
+    SELECT
+        tarantula_id,
+        MAX(last_feeding_date) as last_feeding_date,
+        MIN(days_since_feeding) as days_since_feeding
+    FROM LastFeeding
     GROUP BY tarantula_id
 ),
      SizeBoundaries AS (
@@ -224,8 +250,8 @@ func (db *TarantulaDB) GetTarantulasDueFeeding(ctx context.Context, userID int64
          ORDER BY t.id, sb.category_order DESC
      )
 SELECT
-    t.id as tarantula_id,
-    t.name as tarantula_name,
+    t.id as id,
+    t.name as name,
     ts.id as species_id,
     ts.common_name as species_name,
     COALESCE(lf.days_since_feeding, 999) as days_since_feeding,
@@ -242,7 +268,7 @@ SELECT
 FROM spider_bot.tarantulas t
          JOIN spider_bot.tarantula_species ts ON t.species_id = ts.id
          LEFT JOIN spider_bot.molt_stages molt ON t.current_molt_stage_id = molt.id
-         LEFT JOIN LastFeeding lf ON t.id = lf.tarantula_id
+         LEFT JOIN CombinedFeeding lf ON t.id = lf.tarantula_id
          LEFT JOIN MatchingSchedule ms ON t.id = ms.tarantula_id
 WHERE t.user_id = ?
   AND (molt.stage_name IS NULL OR molt.stage_name != 'Pre-molt')
